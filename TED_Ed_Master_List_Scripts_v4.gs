@@ -258,9 +258,64 @@ function scrapeTedPage(tedUrl) {
 // ===================================================================
 
 /**
+ * Fallback: fetch caption tracks via YouTube's Innertube API.
+ * This is the POST-based internal API that youtube-transcript-api uses
+ * in newer versions. More reliable than page scraping when YouTube
+ * serves consent pages or changes HTML structure.
+ *
+ * Returns an array of caption track objects (same format as page-embedded
+ * captionTracks), or null on failure.
+ */
+function fetchCaptionTracksViaInnertube(videoId) {
+  var apiUrl = "https://www.youtube.com/youtubei/v1/player?key=AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w";
+  var payload = {
+    "context": {
+      "client": {
+        "clientName": "WEB",
+        "clientVersion": "2.20240101.00.00"
+      }
+    },
+    "videoId": videoId
+  };
+
+  try {
+    var response = UrlFetchApp.fetch(apiUrl, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      Logger.log("    Innertube API returned HTTP " + response.getResponseCode());
+      return null;
+    }
+
+    var data = JSON.parse(response.getContentText("UTF-8"));
+
+    if (data && data.captions &&
+        data.captions.playerCaptionsTracklistRenderer &&
+        data.captions.playerCaptionsTracklistRenderer.captionTracks) {
+      var tracks = data.captions.playerCaptionsTracklistRenderer.captionTracks;
+      Logger.log("    Innertube returned " + tracks.length + " caption track(s)");
+      return tracks;
+    }
+
+    Logger.log("    Innertube response has no caption tracks");
+    return null;
+  } catch (e) {
+    Logger.log("    Innertube API error: " + e.message);
+    return null;
+  }
+}
+
+
+/**
  * Fetches a YouTube transcript by scraping the watch page for caption track
  * URLs, then fetching the timedtext XML. This is the same approach used by
  * the python youtube-transcript-api library.
+ *
+ * If page scraping fails, falls back to the Innertube POST API.
  *
  * Returns { text: string, segments: [{text, start}] } or null if unavailable.
  * The segments array preserves timing data for optional timestamp support.
@@ -276,7 +331,8 @@ function fetchTranscriptFromYouTube(videoId) {
       muteHttpExceptions: true,
       followRedirects: true,
       headers: {
-        "Accept-Language": "en-US,en;q=0.9"
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cookie": "CONSENT=YES+cb.20210328-17-p0.en+FX+999"
       }
     });
   } catch (e) {
@@ -293,28 +349,25 @@ function fetchTranscriptFromYouTube(videoId) {
 
   // Step 2: Extract captionTracks from ytInitialPlayerResponse
   // The JSON array is embedded in the page source
+  var tracks = null;
   var captionMatch = html.match(/"captionTracks"\s*:\s*(\[.*?\])\s*[,\}]/);
-  if (!captionMatch) {
-    // Check if captions are simply not available
-    if (html.indexOf('"playabilityStatus"') !== -1 &&
-        html.indexOf('"captions"') === -1) {
-      Logger.log("    No captions available for this video");
-    } else {
-      Logger.log("    Could not find captionTracks in page source");
+  if (captionMatch) {
+    try {
+      tracks = JSON.parse(captionMatch[1]);
+    } catch (e) {
+      Logger.log("    Failed to parse captionTracks JSON from page: " + e.message);
     }
-    return null;
   }
 
-  var tracks;
-  try {
-    tracks = JSON.parse(captionMatch[1]);
-  } catch (e) {
-    Logger.log("    Failed to parse captionTracks JSON: " + e.message);
-    return null;
+  // Step 2b: Fallback to Innertube API if page scraping didn't find tracks
+  // This is the same endpoint youtube-transcript-api uses internally
+  if (!tracks || tracks.length === 0) {
+    Logger.log("    Page scraping found no tracks, trying Innertube API...");
+    tracks = fetchCaptionTracksViaInnertube(videoId);
   }
 
   if (!tracks || tracks.length === 0) {
-    Logger.log("    captionTracks array is empty");
+    Logger.log("    No caption tracks found via any method");
     return null;
   }
 
@@ -774,14 +827,9 @@ function importCollectionsToMaster() {
 
 
 // ===================================================================
-// 3. FIX ENCODING IN ALL TEXT COLUMNS
+// 3. EXPORT MASTER LIST TO CSV
 // ===================================================================
 
-/**
- * Scans ALL cells in the active sheet and fixes UTF-8 mojibake.
- * Works on any column, auto-expands if you add columns.
- * Safe to run repeatedly - leaves clean text untouched.
- */
 /**
  * Exports the master list as a CSV string and saves it to Google Drive.
  * The CSV can then be committed to GitHub manually or via automation.
@@ -857,6 +905,11 @@ function exportMasterListToCSV() {
 // 4. FIX ENCODING IN ALL TEXT COLUMNS
 // ===================================================================
 
+/**
+ * Scans ALL cells in the active sheet and fixes UTF-8 mojibake.
+ * Works on any column, auto-expands if you add columns.
+ * Safe to run repeatedly - leaves clean text untouched.
+ */
 function fixEncoding() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var sheetName = sheet.getName();
