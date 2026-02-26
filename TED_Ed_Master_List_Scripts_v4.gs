@@ -1,21 +1,28 @@
 /**
  * TED-Ed Master List - Google Apps Script
- * v4.1 - 2026-02-26
+ * v5.0 - 2026-02-26
  *
  * FUNCTIONS:
- *   fillMissingData()           - Fills in everything it can from URLs you provide
- *   importCollectionsToMaster() - Imports collection tab data to master list
- *   fixEncoding()               - Fixes mojibake in ALL text columns
+ *   fillMissingData()                - Fills in everything it can from URLs you provide
+ *   fillMissingDataWithTimestamps()  - Same as above, but transcripts include [M:SS] timestamps
+ *   importCollectionsToMaster()      - Imports collection tab data to master list
+ *   fixEncoding()                    - Fixes mojibake in ALL text columns
  *
  * fillMissingData() per row:
  *   1. If TED Lesson URL exists - scrapes YouTube URL, Description, Author, Category
- *   2. If YouTube URL exists - fetches Transcript
+ *   2. If YouTube URL exists - fetches Transcript directly from YouTube (no third-party API)
  *   Never guesses or fabricates URLs.
+ *
+ * TRANSCRIPT APPROACH (v5.0):
+ *   Fetches the YouTube watch page HTML, extracts captionTracks from
+ *   ytInitialPlayerResponse, fetches the timedtext XML, and parses segments.
+ *   This is the same approach used by the python youtube-transcript-api library.
+ *   Replaced the broken subtitles-api.vercel.app dependency from v4.x.
  *
  * WORKFLOW:
  *   1. Paste a TED-Ed collection into a new tab
  *   2. Run importCollectionsToMaster()
- *   3. Run fillMissingData()
+ *   3. Run fillMissingData() (or fillMissingDataWithTimestamps())
  *   4. Run fixEncoding() if you see weird characters
  *
  * Columns detected dynamically by header keywords (partial, case-insensitive):
@@ -247,6 +254,177 @@ function scrapeTedPage(tedUrl) {
 
 
 // ===================================================================
+// YOUTUBE TRANSCRIPT FETCHING (direct, no third-party API)
+// ===================================================================
+
+/**
+ * Fetches a YouTube transcript by scraping the watch page for caption track
+ * URLs, then fetching the timedtext XML. This is the same approach used by
+ * the python youtube-transcript-api library.
+ *
+ * Returns { text: string, segments: [{text, start}] } or null if unavailable.
+ * The segments array preserves timing data for optional timestamp support.
+ */
+function fetchTranscriptFromYouTube(videoId) {
+  // Step 1: Fetch the YouTube watch page
+  var watchUrl = "https://www.youtube.com/watch?v=" + videoId;
+  Logger.log("    Fetching YouTube page: " + watchUrl);
+
+  var response;
+  try {
+    response = UrlFetchApp.fetch(watchUrl, {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        "Accept-Language": "en-US,en;q=0.9"
+      }
+    });
+  } catch (e) {
+    Logger.log("    Failed to fetch YouTube page: " + e.message);
+    return null;
+  }
+
+  if (response.getResponseCode() !== 200) {
+    Logger.log("    YouTube page returned HTTP " + response.getResponseCode());
+    return null;
+  }
+
+  var html = response.getContentText("UTF-8");
+
+  // Step 2: Extract captionTracks from ytInitialPlayerResponse
+  // The JSON array is embedded in the page source
+  var captionMatch = html.match(/"captionTracks"\s*:\s*(\[.*?\])\s*[,\}]/);
+  if (!captionMatch) {
+    // Check if captions are simply not available
+    if (html.indexOf('"playabilityStatus"') !== -1 &&
+        html.indexOf('"captions"') === -1) {
+      Logger.log("    No captions available for this video");
+    } else {
+      Logger.log("    Could not find captionTracks in page source");
+    }
+    return null;
+  }
+
+  var tracks;
+  try {
+    tracks = JSON.parse(captionMatch[1]);
+  } catch (e) {
+    Logger.log("    Failed to parse captionTracks JSON: " + e.message);
+    return null;
+  }
+
+  if (!tracks || tracks.length === 0) {
+    Logger.log("    captionTracks array is empty");
+    return null;
+  }
+
+  Logger.log("    Found " + tracks.length + " caption track(s)");
+
+  // Step 3: Find the best English track (prefer manual captions over ASR)
+  var track = null;
+  // First pass: manual English captions
+  for (var i = 0; i < tracks.length; i++) {
+    if (tracks[i].languageCode === "en" && tracks[i].kind !== "asr") {
+      track = tracks[i];
+      Logger.log("    Using manual English captions");
+      break;
+    }
+  }
+  // Second pass: auto-generated English
+  if (!track) {
+    for (var j = 0; j < tracks.length; j++) {
+      if (tracks[j].languageCode === "en") {
+        track = tracks[j];
+        Logger.log("    Using auto-generated English captions");
+        break;
+      }
+    }
+  }
+  // Fallback: first available track
+  if (!track) {
+    track = tracks[0];
+    Logger.log("    No English track found, using: " + (track.languageCode || "unknown"));
+  }
+
+  // Step 4: Fetch the timedtext XML from the caption track baseUrl
+  var baseUrl = track.baseUrl;
+  if (!baseUrl) {
+    Logger.log("    Caption track has no baseUrl");
+    return null;
+  }
+  // Decode escaped ampersands that may appear in the JSON
+  baseUrl = baseUrl.replace(/\\u0026/g, "&").replace(/&amp;/g, "&");
+
+  var xmlResponse;
+  try {
+    xmlResponse = UrlFetchApp.fetch(baseUrl, { muteHttpExceptions: true });
+  } catch (e) {
+    Logger.log("    Failed to fetch timedtext: " + e.message);
+    return null;
+  }
+
+  if (xmlResponse.getResponseCode() !== 200) {
+    Logger.log("    Timedtext returned HTTP " + xmlResponse.getResponseCode());
+    return null;
+  }
+
+  var xml = xmlResponse.getContentText("UTF-8");
+
+  // Step 5: Parse the XML to extract text segments with timing
+  var segments = [];
+  var re = /<text[^>]*start="([^"]*)"[^>]*>([\s\S]*?)<\/text>/g;
+  var m;
+  while ((m = re.exec(xml)) !== null) {
+    var startSec = parseFloat(m[1]) || 0;
+    var text = m[2]
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\n/g, " ")
+      .trim();
+    if (text) {
+      segments.push({ text: text, start: startSec });
+    }
+  }
+
+  if (segments.length === 0) {
+    Logger.log("    Parsed 0 text segments from timedtext XML");
+    return null;
+  }
+
+  // Join all text segments into a single string
+  var fullText = [];
+  for (var k = 0; k < segments.length; k++) {
+    fullText.push(segments[k].text);
+  }
+
+  Logger.log("    Parsed " + segments.length + " segments (" + fullText.join(" ").length + " chars)");
+
+  return {
+    text: fullText.join(" "),
+    segments: segments
+  };
+}
+
+/**
+ * Formats transcript segments with [M:SS] timestamps.
+ * Used by fillMissingDataWithTimestamps().
+ */
+function formatTranscriptWithTimestamps(segments) {
+  var lines = [];
+  for (var i = 0; i < segments.length; i++) {
+    var s = segments[i];
+    var minutes = Math.floor(s.start / 60);
+    var seconds = Math.floor(s.start % 60);
+    lines.push("[" + minutes + ":" + pad(seconds) + "] " + s.text);
+  }
+  return lines.join("\n");
+}
+
+
+// ===================================================================
 // 1. FILL MISSING DATA
 // ===================================================================
 
@@ -344,30 +522,20 @@ function fillMissingData() {
       if (videoId) {
         Logger.log("  Fetching transcript for " + videoId + "...");
         try {
-          var apiUrl = "https://subtitles-api.vercel.app/" + videoId;
-          var response = UrlFetchApp.fetch(apiUrl, { muteHttpExceptions: true });
-
-          if (response.getResponseCode() === 200) {
-            var blob = response.getBlob();
-            var contentText = blob.getDataAsString("UTF-8");
-            var data = JSON.parse(contentText);
-
-            if (data && data.transcript) {
-              var fullText = data.transcript.map(function(item) { return item.text; }).join(" ");
-              fullText = fixMojibake(fullText);
-              sheet.getRange(i, cols["transcript"]).setValue(fullText.substring(0, 49000));
-              stats.transcript++;
-              Logger.log("  Got transcript (" + fullText.length + " chars)");
-            } else {
-              Logger.log("  No transcript available");
-            }
+          var result = fetchTranscriptFromYouTube(videoId);
+          if (result && result.text) {
+            var fullText = fixMojibake(result.text);
+            sheet.getRange(i, cols["transcript"]).setValue(fullText.substring(0, 49000));
+            stats.transcript++;
+            Logger.log("  Got transcript (" + fullText.length + " chars)");
           } else {
-            Logger.log("  Transcript API returned HTTP " + response.getResponseCode());
+            Logger.log("  No transcript available for " + videoId);
           }
         } catch (e) {
           Logger.log("  Transcript error: " + e.message);
           stats.errors++;
         }
+        Utilities.sleep(1000); // Rate limit YouTube page fetches
       }
     }
 
@@ -383,6 +551,78 @@ function fillMissingData() {
   Logger.log("  Transcripts fetched:   " + stats.transcript);
   Logger.log("  Rows skipped (empty):  " + stats.skipped);
   Logger.log("  Errors:                " + stats.errors);
+  Logger.log("===================================");
+}
+
+
+/**
+ * Same as fillMissingData() but writes transcripts with [M:SS] timestamps.
+ * Each line becomes: [0:05] Ideas change everything
+ * Useful for finding specific moments in the video.
+ * Note: timestamped transcripts use more characters per cell.
+ */
+function fillMissingDataWithTimestamps() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var sheetName = sheet.getName();
+
+  if (sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) {
+    Logger.log("ERROR: Sheet '" + sheetName + "' appears empty. Select the master list tab and try again.");
+    return;
+  }
+
+  var cols = getColumnMap(sheet, ["title", "youtube", "transcript"]);
+
+  if (!cols["title"]) {
+    Logger.log("ERROR: No 'Title' column found in '" + sheetName + "'.");
+    return;
+  }
+  if (!cols["transcript"]) {
+    Logger.log("ERROR: No 'Transcript' column found in '" + sheetName + "'.");
+    return;
+  }
+
+  var lastRow = sheet.getLastRow();
+  var fetched = 0;
+  var errors = 0;
+
+  for (var i = 2; i <= lastRow; i++) {
+    var title = sheet.getRange(i, cols["title"]).getValue().toString().trim();
+    if (!title) continue;
+
+    var ytUrl = cols["youtube"] ? sheet.getRange(i, cols["youtube"]).getValue().toString().trim() : "";
+    var transcript = sheet.getRange(i, cols["transcript"]).getValue().toString().trim();
+
+    if (transcript || !ytUrl) continue;
+
+    var videoId = extractVideoId(ytUrl);
+    if (!videoId) continue;
+
+    Logger.log("Row " + i + ": " + title);
+    Logger.log("  Fetching transcript with timestamps for " + videoId + "...");
+
+    try {
+      var result = fetchTranscriptFromYouTube(videoId);
+      if (result && result.segments && result.segments.length > 0) {
+        var timestamped = formatTranscriptWithTimestamps(result.segments);
+        timestamped = fixMojibake(timestamped);
+        sheet.getRange(i, cols["transcript"]).setValue(timestamped.substring(0, 49000));
+        fetched++;
+        Logger.log("  Got timestamped transcript (" + timestamped.length + " chars, " + result.segments.length + " segments)");
+      } else {
+        Logger.log("  No transcript available for " + videoId);
+      }
+    } catch (e) {
+      Logger.log("  Transcript error: " + e.message);
+      errors++;
+    }
+    Utilities.sleep(1000);
+  }
+
+  Logger.log("");
+  Logger.log("===================================");
+  Logger.log("fillMissingDataWithTimestamps complete!");
+  Logger.log("  Transcripts fetched: " + fetched);
+  Logger.log("  Errors:              " + errors);
   Logger.log("===================================");
 }
 
@@ -542,6 +782,81 @@ function importCollectionsToMaster() {
  * Works on any column, auto-expands if you add columns.
  * Safe to run repeatedly - leaves clean text untouched.
  */
+/**
+ * Exports the master list as a CSV string and saves it to Google Drive.
+ * The CSV can then be committed to GitHub manually or via automation.
+ *
+ * This enables:
+ *   - Version-controlled snapshots of the database in GitHub
+ *   - Other tools (Python scripts, web apps) to read the data without Sheets API auth
+ *   - Google Sheets IMPORTDATA() from the GitHub raw URL for read-only copies
+ *
+ * The exported file is saved to the root of Google Drive as "ted_ed_master_list.csv".
+ * After running, download the file and commit it to the GitHub repository.
+ */
+function exportMasterListToCSV() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var masterName = "TED-Ed Riddles Master List";
+  var masterSheet = ss.getSheetByName(masterName);
+
+  if (!masterSheet) {
+    masterSheet = ss.getActiveSheet();
+    Logger.log("Using active sheet: " + masterSheet.getName());
+  }
+
+  var lastRow = masterSheet.getLastRow();
+  var lastCol = masterSheet.getLastColumn();
+
+  if (lastRow < 1 || lastCol < 1) {
+    Logger.log("ERROR: Sheet is empty.");
+    return;
+  }
+
+  var data = masterSheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var csvLines = [];
+
+  for (var r = 0; r < data.length; r++) {
+    var row = [];
+    for (var c = 0; c < data[r].length; c++) {
+      var val = data[r][c];
+      if (val instanceof Date) {
+        val = formatTime(val);
+      }
+      val = String(val === null || val === undefined ? "" : val);
+      // CSV escaping: quote fields that contain commas, quotes, or newlines
+      if (val.indexOf(",") !== -1 || val.indexOf('"') !== -1 || val.indexOf("\n") !== -1) {
+        val = '"' + val.replace(/"/g, '""') + '"';
+      }
+      row.push(val);
+    }
+    csvLines.push(row.join(","));
+  }
+
+  var csvContent = csvLines.join("\n");
+  var fileName = "ted_ed_master_list.csv";
+
+  // Save to Google Drive
+  var existingFiles = DriveApp.getFilesByName(fileName);
+  if (existingFiles.hasNext()) {
+    var file = existingFiles.next();
+    file.setContent(csvContent);
+    Logger.log("Updated existing file: " + fileName + " (" + csvContent.length + " bytes)");
+    Logger.log("File URL: " + file.getUrl());
+  } else {
+    var newFile = DriveApp.createFile(fileName, csvContent, "text/csv");
+    Logger.log("Created new file: " + fileName + " (" + csvContent.length + " bytes)");
+    Logger.log("File URL: " + newFile.getUrl());
+  }
+
+  Logger.log("Export complete! " + lastRow + " rows, " + lastCol + " columns.");
+  Logger.log("Download the file from Google Drive and commit to GitHub.");
+}
+
+
+// ===================================================================
+// 4. FIX ENCODING IN ALL TEXT COLUMNS
+// ===================================================================
+
 function fixEncoding() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var sheetName = sheet.getName();
