@@ -196,6 +196,9 @@ CREATE INDEX IF NOT EXISTS idx_ted_slug ON lessons(ted_slug);
 CREATE INDEX IF NOT EXISTS idx_youtube_id ON lessons(youtube_id);
 CREATE INDEX IF NOT EXISTS idx_content_id ON lessons(content_id);
 CREATE INDEX IF NOT EXISTS idx_collection ON lessons(collection);
+CREATE INDEX IF NOT EXISTS idx_title ON lessons(title);
+CREATE INDEX IF NOT EXISTS idx_transcript_status ON lessons(transcript_status);
+CREATE INDEX IF NOT EXISTS idx_scrape_status ON lessons(scrape_status);
 """
 
 

@@ -10,6 +10,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('submit_urls') }}" class="submit-form">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <textarea name="urls" rows="8" class="url-input" placeholder="https://ed.ted.com/lessons/the-prison-break-riddle
 https://ed.ted.com/lessons/can-you-solve-the-bridge-riddle
 https://www.youtube.com/watch?v=..."

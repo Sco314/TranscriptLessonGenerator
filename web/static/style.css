@@ -349,8 +349,58 @@ body {
 .doc-links li { margin-bottom: 0.25rem; }
 .doc-links a { color: var(--red); }
 
+/* ── Pagination ── */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+}
+.page-info {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+/* ── Enrichment progress ── */
+.enrichment-status {
+    background: #e8f4fd;
+    border: 1px solid #b3d9f2;
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+}
+.enrichment-label {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+.enrichment-detail {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+}
+.enrichment-done {
+    background: #d4edda;
+    border-color: #b1dfbb;
+}
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #d4e5f7;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    background: var(--red);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
 @media print {
-    .navbar, .footer, .btn { display: none !important; }
+    .navbar, .footer, .btn, .pagination, .enrichment-status { display: none !important; }
     .lesson-doc { max-width: 100%; padding: 0; }
     .video-container { display: none; }
 }

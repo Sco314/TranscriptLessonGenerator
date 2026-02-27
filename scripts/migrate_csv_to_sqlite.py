@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Migrate lesson data from CSV to SQLite.
 
-Reads the CSV, computes stable lesson_ids, collapses duplicates (preferring
-rows with transcript_status=ok), and writes to SQLite.
+Reads the CSV, computes stable lesson_ids, collapses duplicates using shared
+deterministic dedup rules, and writes to SQLite.
 
 Usage:
     python scripts/migrate_csv_to_sqlite.py
@@ -16,7 +16,7 @@ from pathlib import Path
 # Add parent dir to path so we can import ted_lessons
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ted_lessons.models import Lesson
+from ted_lessons.dedup import collapse_duplicates
 from ted_lessons.store import CSVStore, SQLiteStore
 
 
@@ -31,35 +31,9 @@ def migrate(csv_path: str, db_path: str, dry_run: bool = False):
 
     print(f"Loaded {len(lessons)} lesson(s) from {csv_path}")
 
-    # Collapse duplicates by lesson_id (prefer row with transcript, newer timestamp)
-    deduped: dict[str, Lesson] = {}
-    duplicates = 0
-    for lesson in lessons:
-        lid = lesson.lesson_id
-        if not lid:
-            # Generate an ID if missing (old CSV rows)
-            lesson.ensure_ids()
-            lid = lesson.lesson_id
-            if not lid:
-                print(f"  [SKIP] Row with no identifiable ID: title='{lesson.title}'")
-                continue
-
-        if lid in deduped:
-            duplicates += 1
-            existing = deduped[lid]
-            # Prefer the row with a successful transcript
-            if lesson.transcript_status == "ok" and existing.transcript_status != "ok":
-                deduped[lid] = lesson
-            # Prefer the row with a newer last_enriched timestamp
-            elif lesson.last_enriched > existing.last_enriched:
-                # But don't overwrite a good transcript with nothing
-                if existing.transcript_status == "ok" and lesson.transcript_status != "ok":
-                    lesson.transcript = existing.transcript
-                    lesson.transcript_status = existing.transcript_status
-                deduped[lid] = lesson
-        else:
-            deduped[lid] = lesson
-
+    deduped, duplicates, skipped = collapse_duplicates(lessons)
+    for msg in skipped:
+        print(f"  [SKIP] {msg}")
     print(f"After dedup: {len(deduped)} unique lesson(s) ({duplicates} duplicate(s) collapsed)")
 
     if dry_run:
