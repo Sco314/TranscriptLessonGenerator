@@ -82,17 +82,18 @@
     </div>
     {% endif %}
 
-    {% if lesson.transcript %}
     <div class="lesson-section">
         <h2>Transcript</h2>
+        {% if lesson.transcript %}
         <div class="transcript-box">{{ lesson.transcript }}</div>
-    </div>
-    {% elif lesson.transcript_status == 'unavailable' %}
-    <div class="lesson-section">
-        <h2>Transcript</h2>
+        {% elif lesson.transcript_status == 'unavailable' %}
         <p class="text-muted">No transcript available for this video.</p>
+        {% elif lesson.transcript_status == 'failed' %}
+        <p class="text-muted">Transcript fetch failed: {{ lesson.error_message or 'unknown error' }}. Try re-enriching this lesson.</p>
+        {% else %}
+        <p class="text-muted">Transcript not yet fetched.</p>
+        {% endif %}
     </div>
-    {% endif %}
 
     <div class="lesson-section">
         <h2>Lesson Document</h2>

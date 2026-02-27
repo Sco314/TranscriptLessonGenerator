@@ -79,7 +79,12 @@ def lesson_detail(lesson_id: str):
     lesson = store.find_by_id(lesson_id)
 
     if not lesson:
-        # Try substring match as fallback
+        # Backwards compat: bare slug → try with ted_ prefix
+        if not lesson_id.startswith(("ted_", "yt_")):
+            prefixed = store.find_by_id(f"ted_{lesson_id}")
+            if prefixed:
+                return redirect(url_for("lesson_detail", lesson_id=prefixed.lesson_id))
+        # Try substring match as last resort
         for l in store.all_lessons():
             if lesson_id in l.lesson_id:
                 return redirect(url_for("lesson_detail", lesson_id=l.lesson_id))
@@ -93,6 +98,10 @@ def lesson_document(lesson_id: str):
     """Printable lesson document (Phase 3)."""
     store = get_store()
     lesson = store.find_by_id(lesson_id)
+    if not lesson and not lesson_id.startswith(("ted_", "yt_")):
+        lesson = store.find_by_id(f"ted_{lesson_id}")
+        if lesson:
+            return redirect(url_for("lesson_document", lesson_id=lesson.lesson_id))
     if not lesson:
         abort(404)
     return render_template("document.html", lesson=lesson)

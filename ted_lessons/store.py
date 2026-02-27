@@ -30,7 +30,7 @@ DEFAULT_SQLITE_PATH = DEFAULT_DATA_DIR / "lessons.db"
 # ---------------------------------------------------------------------------
 # load() -> None               (eager load from disk)
 # save() -> None               (flush to disk)
-# find(ted_slug, youtube_id) -> Lesson | None
+# find(ted_slug, youtube_id, content_id) -> Lesson | None
 # find_by_id(lesson_id) -> Lesson | None
 # add_or_update(lesson) -> (Lesson, was_new)
 # search(query) -> list[Lesson]
@@ -44,7 +44,7 @@ DEFAULT_SQLITE_PATH = DEFAULT_DATA_DIR / "lessons.db"
 # ═══════════════════════════════════════════════════════════════════════════
 
 class CSVStore:
-    """CSV-backed lesson storage with dedup by ted_slug / youtube_id."""
+    """CSV-backed lesson storage with dedup by ted_slug / youtube_id / content_id."""
 
     def __init__(self, path: str | Path | None = None):
         self.path = Path(path) if path else DEFAULT_CSV_PATH
@@ -96,7 +96,8 @@ class CSVStore:
                 pass
             raise
 
-    def find(self, ted_slug: str = "", youtube_id: str = "") -> Lesson | None:
+    def find(self, ted_slug: str = "", youtube_id: str = "", content_id: str = "") -> Lesson | None:
+        """Find by ted_slug (primary), youtube_id (secondary), content_id (tertiary)."""
         if ted_slug:
             for lesson in self.lessons:
                 if lesson.ted_slug and lesson.ted_slug == ted_slug:
@@ -104,6 +105,10 @@ class CSVStore:
         if youtube_id:
             for lesson in self.lessons:
                 if lesson.youtube_id and lesson.youtube_id == youtube_id:
+                    return lesson
+        if content_id:
+            for lesson in self.lessons:
+                if lesson.content_id and lesson.content_id == content_id:
                     return lesson
         return None
 
@@ -114,7 +119,10 @@ class CSVStore:
         return None
 
     def add_or_update(self, lesson: Lesson) -> tuple[Lesson, bool]:
-        existing = self.find(ted_slug=lesson.ted_slug, youtube_id=lesson.youtube_id)
+        existing = self.find(
+            ted_slug=lesson.ted_slug, youtube_id=lesson.youtube_id,
+            content_id=lesson.content_id,
+        )
         if existing:
             merge_lesson(existing, lesson)
             return existing, False
@@ -226,7 +234,8 @@ class SQLiteStore:
         rows = self.conn.execute("SELECT * FROM lessons ORDER BY lesson_id").fetchall()
         return [self._row_to_lesson(r) for r in rows]
 
-    def find(self, ted_slug: str = "", youtube_id: str = "") -> Lesson | None:
+    def find(self, ted_slug: str = "", youtube_id: str = "", content_id: str = "") -> Lesson | None:
+        """Find by ted_slug (primary), youtube_id (secondary), content_id (tertiary)."""
         if ted_slug:
             row = self.conn.execute(
                 "SELECT * FROM lessons WHERE ted_slug = ?", (ted_slug,)
@@ -239,6 +248,12 @@ class SQLiteStore:
             ).fetchone()
             if row:
                 return self._row_to_lesson(row)
+        if content_id:
+            row = self.conn.execute(
+                "SELECT * FROM lessons WHERE content_id = ?", (content_id,)
+            ).fetchone()
+            if row:
+                return self._row_to_lesson(row)
         return None
 
     def find_by_id(self, lesson_id: str) -> Lesson | None:
@@ -248,7 +263,10 @@ class SQLiteStore:
         return self._row_to_lesson(row) if row else None
 
     def add_or_update(self, lesson: Lesson) -> tuple[Lesson, bool]:
-        existing = self.find(ted_slug=lesson.ted_slug, youtube_id=lesson.youtube_id)
+        existing = self.find(
+            ted_slug=lesson.ted_slug, youtube_id=lesson.youtube_id,
+            content_id=lesson.content_id,
+        )
         if existing:
             merge_lesson(existing, lesson)
             self._upsert(existing)

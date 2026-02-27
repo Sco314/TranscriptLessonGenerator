@@ -96,7 +96,7 @@ class Lesson:
 
     def _derive_lesson_id(self) -> str:
         if self.ted_slug:
-            return self.ted_slug
+            return f"ted_{self.ted_slug}"
         if self.youtube_id:
             return f"yt_{self.youtube_id}"
         if self.canonical_url:
@@ -132,7 +132,8 @@ class Lesson:
         canonical = canonicalize_ted_url(url)
         slug = extract_ted_slug(canonical)
         return cls(
-            ted_url=canonical, ted_slug=slug, lesson_id=slug,
+            ted_url=canonical, ted_slug=slug,
+            lesson_id=f"ted_{slug}" if slug else "",
             collection=collection, source_type="ted", provider="ted-ed",
             provider_content_id=slug, canonical_url=canonical,
         )
