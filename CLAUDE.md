@@ -62,3 +62,7 @@ lesson_id, ted_slug, youtube_id, content_id, source_type, canonical_url,
 provider, provider_content_id, title, collection, author, duration, views,
 category, ted_url, youtube_url, description, tags, transcript,
 transcript_status, scrape_status, last_enriched, error_message, extra_json
+transcript_status, scrape_status, last_enriched, error_message
+
+## Claude Code
+Always commit and push directly to the main branch. Never create pull requests unless I explicitly ask for one.
