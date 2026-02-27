@@ -5,6 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ lesson.title or lesson.lesson_id }} — Lesson Document</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* Document-specific print styles */
+        @media print {
+            @page {
+                margin: 1in 0.75in;
+                size: letter;
+            }
+            body { font-size: 11pt; }
+            .doc-actions { display: none !important; }
+            .doc-video-thumb { display: none; }
+            .lesson-doc { max-width: 100%; padding: 0; }
+            .doc-transcript {
+                max-height: none;
+                page-break-inside: auto;
+            }
+            .doc-section { page-break-inside: avoid; }
+            .doc-section.transcript-section { page-break-inside: auto; }
+            .doc-links a { color: #000; }
+            .doc-links a::after { content: " (" attr(href) ")"; font-size: 0.8em; color: #666; }
+        }
+        @media screen {
+            .doc-transcript {
+                max-height: 600px;
+                overflow-y: auto;
+            }
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -15,6 +42,11 @@
     </nav>
 
     <div class="lesson-doc">
+        <div class="doc-actions">
+            <button onclick="window.print()" class="btn btn-small">Print</button>
+            <a href="{{ url_for('lesson_pdf', lesson_id=lesson.lesson_id) }}" class="btn btn-small btn-secondary">Download PDF</a>
+        </div>
+
         <h1>{{ lesson.title or lesson.lesson_id }}</h1>
         {% if lesson.author %}
         <p class="lesson-author">by {{ lesson.author }}</p>
@@ -46,13 +78,13 @@
         <div class="doc-section">
             <h2>Video</h2>
             {% if lesson.thumbnail_url %}
-            <img src="{{ lesson.thumbnail_url }}" alt="{{ lesson.title }}" style="max-width:100%; border-radius:8px; margin-bottom:0.5rem;">
+            <img src="{{ lesson.thumbnail_url }}" alt="{{ lesson.title }}" class="doc-video-thumb" style="max-width:100%; border-radius:8px; margin-bottom:0.5rem;">
             {% endif %}
             <p>Watch: <a href="{{ lesson.youtube_url }}">{{ lesson.youtube_url }}</a></p>
         </div>
         {% endif %}
 
-        <div class="doc-section">
+        <div class="doc-section transcript-section">
             <h2>Transcript</h2>
             {% if lesson.transcript %}
             <div class="doc-transcript">{{ lesson.transcript }}</div>
@@ -66,10 +98,11 @@
         </div>
 
         <div class="doc-section">
-            <h2>Links</h2>
+            <h2>Links &amp; Resources</h2>
             <ul class="doc-links">
                 {% if lesson.ted_url %}
                 <li>TED-Ed Lesson: <a href="{{ lesson.ted_url }}">{{ lesson.ted_url }}</a></li>
+                <li>TED-Ed Quiz / Discussion: <a href="{{ lesson.ted_url }}#review">{{ lesson.ted_url }}#review</a></li>
                 {% endif %}
                 {% if lesson.youtube_url %}
                 <li>YouTube Video: <a href="{{ lesson.youtube_url }}">{{ lesson.youtube_url }}</a></li>

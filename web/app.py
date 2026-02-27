@@ -1,13 +1,15 @@
 """Flask web app for TED-Ed Lesson Database.
 
 Routes:
-  /                       Browse all lessons (card grid with thumbnails, search)
-  /lesson/<lesson_id>     Lesson detail (metadata, embedded video, transcript)
-  /submit                 Submit form (paste URLs)
-  /submit/status/<job_id> Poll enrichment job progress (JSON)
-  /api/lessons            JSON list (supports ?q= search, ?collection= filter)
-  /api/lessons/<id>       Single lesson JSON
-  /api/submit             Submit URLs via API, returns JSON results
+  /                              Browse all lessons (card grid with thumbnails, search)
+  /lesson/<lesson_id>            Lesson detail (metadata, embedded video, transcript)
+  /lesson/<lesson_id>/document   Printable lesson document (HTML)
+  /lesson/<lesson_id>/pdf        Download lesson document as PDF
+  /submit                        Submit form (paste URLs)
+  /submit/status/<job_id>        Poll enrichment job progress (JSON)
+  /api/lessons                   JSON list (supports ?q= search, ?collection= filter)
+  /api/lessons/<id>              Single lesson JSON
+  /api/submit                    Submit URLs via API, returns JSON results
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from pathlib import Path
 
 from flask import (
     Flask, render_template, request, redirect, url_for, jsonify, abort, session,
+    make_response,
 )
 
 # Add parent to path for ted_lessons import
@@ -183,6 +186,33 @@ def lesson_document(lesson_id: str):
     if not lesson:
         abort(404)
     return render_template("document.html", lesson=lesson)
+
+
+@app.route("/lesson/<lesson_id>/pdf")
+def lesson_pdf(lesson_id: str):
+    """Download lesson document as PDF."""
+    store = get_store()
+    lesson = store.find_by_id(lesson_id)
+    if not lesson and not lesson_id.startswith(("ted_", "yt_")):
+        lesson = store.find_by_id(f"ted_{lesson_id}")
+        if lesson:
+            return redirect(url_for("lesson_pdf", lesson_id=lesson.lesson_id))
+    if not lesson:
+        abort(404)
+
+    try:
+        from weasyprint import HTML
+    except ImportError:
+        abort(501)  # weasyprint not installed
+
+    html_content = render_template("document.html", lesson=lesson)
+    pdf_bytes = HTML(string=html_content, base_url=request.url_root).write_pdf()
+
+    filename = f"{lesson.lesson_id}.pdf"
+    response = make_response(pdf_bytes)
+    response.headers["Content-Type"] = "application/pdf"
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 @app.route("/submit", methods=["GET"])

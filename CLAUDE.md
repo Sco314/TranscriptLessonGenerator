@@ -17,9 +17,10 @@ web interface.
   - `transcript.py` — Fetches YouTube transcripts with 3 fallbacks: youtube-transcript-api library → page scrape → Innertube POST API.
   - `enricher.py` — Orchestrator: takes a URL, fills all missing fields. Handles partial failure. Never overwrites a successful transcript with a failed attempt.
   - `http_client.py` — Shared requests session with exponential backoff + jitter, per-host rate limiting, response caching.
-  - `cli.py` — CLI entry point (subcommands: add, enrich, list, search, show, export, migrate)
-- `web/` — Flask web application (Phase 2)
-  - `app.py` — Routes: browse (/), lesson detail (/lesson/<lesson_id>), submit (/submit), printable document (/lesson/<id>/document), JSON API (/api/*)
+  - `dedup.py` — Shared dedup logic: deterministic pick_best_row(), collapse_duplicates(). Used by cli.py and migrate script.
+  - `cli.py` — CLI entry point (subcommands: add, enrich, list, search, show, document, export, migrate)
+- `web/` — Flask web application (Phase 2) with CSRF protection, async enrichment, pagination
+  - `app.py` — Routes: browse (/), lesson detail (/lesson/<lesson_id>), submit (/submit), printable document (/lesson/<id>/document), PDF download (/lesson/<id>/pdf), JSON API (/api/*)
   - `templates/` — Jinja2 templates (base, index, lesson, submit, results, document, 404)
   - `static/style.css` — Clean, minimal CSS with TED-red accent
 - `data/ted_ed_master_list.csv` — CSV database (Phase 1 default)
@@ -50,6 +51,8 @@ python -m ted_lessons add https://ed.ted.com/lessons/the-prison-break-riddle
 python -m ted_lessons list
 python -m ted_lessons enrich
 python -m ted_lessons search "riddle"
+python -m ted_lessons document ted_the-prison-break-riddle        # HTML document
+python -m ted_lessons document ted_the-prison-break-riddle --pdf  # PDF document
 python -m ted_lessons migrate              # CSV → SQLite
 
 # Web app

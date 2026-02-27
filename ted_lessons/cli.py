@@ -1,4 +1,4 @@
-"""CLI entry point for ted_lessons — add, enrich, list, search, show, export, migrate."""
+"""CLI entry point for ted_lessons — add, enrich, list, search, show, export, document, migrate."""
 
 from __future__ import annotations
 
@@ -51,6 +51,12 @@ def main(argv: list[str] | None = None):
     p_show = sub.add_parser("show", help="Show full details for a lesson")
     p_show.add_argument("lesson_id", help="Lesson ID (ted slug or yt_XXXXX)")
 
+    # --- document ---
+    p_doc = sub.add_parser("document", help="Generate a printable lesson document")
+    p_doc.add_argument("lesson_id", help="Lesson ID (e.g. ted_the-prison-break-riddle)")
+    p_doc.add_argument("--output", "-o", help="Output file path (default: <lesson_id>.html or .pdf)")
+    p_doc.add_argument("--pdf", action="store_true", help="Generate PDF instead of HTML")
+
     # --- export ---
     p_export = sub.add_parser("export", help="Export to CSV")
     p_export.add_argument("--csv", default=str(DEFAULT_CSV_PATH), help="Output CSV path")
@@ -90,6 +96,8 @@ def main(argv: list[str] | None = None):
         cmd_search(args, store)
     elif args.command == "show":
         cmd_show(args, store)
+    elif args.command == "document":
+        cmd_document(args, store)
     elif args.command == "export":
         cmd_export(args, store)
 
@@ -270,6 +278,161 @@ def cmd_show(args, store):
         preview = lesson.transcript[:500]
         print(f"  Transcript preview ({len(lesson.transcript)} chars total):")
         print(f"  {preview}{'...' if len(lesson.transcript) > 500 else ''}")
+
+
+def cmd_document(args, store):
+    """Generate a printable lesson document (HTML or PDF)."""
+    lesson = store.find_by_id(args.lesson_id)
+    if not lesson:
+        # Try with ted_ prefix
+        if not args.lesson_id.startswith(("ted_", "yt_")):
+            lesson = store.find_by_id(f"ted_{args.lesson_id}")
+    if not lesson:
+        # Try substring
+        for l in store.all_lessons():
+            if args.lesson_id in l.lesson_id:
+                lesson = l
+                break
+    if not lesson:
+        print(f"Lesson not found: {args.lesson_id}")
+        sys.exit(1)
+
+    ext = "pdf" if args.pdf else "html"
+    output_path = args.output or f"{lesson.lesson_id}.{ext}"
+
+    html_content = _render_document_html(lesson)
+
+    if args.pdf:
+        try:
+            from weasyprint import HTML as WeasyprintHTML
+        except ImportError:
+            print("Error: weasyprint is required for PDF export.")
+            print("Install it with: pip install weasyprint")
+            sys.exit(1)
+        pdf_bytes = WeasyprintHTML(string=html_content).write_pdf()
+        with open(output_path, "wb") as f:
+            f.write(pdf_bytes)
+    else:
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+
+    print(f"Generated {ext.upper()}: {output_path}")
+
+
+def _render_document_html(lesson) -> str:
+    """Render a standalone lesson document HTML string (no Flask dependency)."""
+    meta_items = []
+    if lesson.collection:
+        meta_items.append(f"<dt>Collection</dt><dd>{lesson.collection}</dd>")
+    if lesson.category:
+        meta_items.append(f"<dt>Category</dt><dd>{lesson.category}</dd>")
+    if lesson.duration:
+        meta_items.append(f"<dt>Duration</dt><dd>{lesson.duration}</dd>")
+    if lesson.views:
+        meta_items.append(f"<dt>Views</dt><dd>{lesson.views}</dd>")
+    meta_html = "\n            ".join(meta_items)
+
+    description_section = ""
+    if lesson.description:
+        description_section = f"""
+        <div class="doc-section">
+            <h2>Lesson Overview</h2>
+            <p>{_esc(lesson.description)}</p>
+        </div>"""
+
+    video_section = ""
+    if lesson.youtube_id:
+        thumb = ""
+        if lesson.thumbnail_url:
+            thumb = f'<img src="{lesson.thumbnail_url}" alt="{_esc(lesson.title)}" style="max-width:100%; border-radius:8px; margin-bottom:0.5rem;">'
+        video_section = f"""
+        <div class="doc-section">
+            <h2>Video</h2>
+            {thumb}
+            <p>Watch: <a href="{lesson.youtube_url}">{lesson.youtube_url}</a></p>
+        </div>"""
+
+    if lesson.transcript:
+        transcript_inner = f'<div class="doc-transcript">{_esc(lesson.transcript)}</div>'
+    elif lesson.transcript_status == "unavailable":
+        transcript_inner = "<p><em>No transcript available for this video.</em></p>"
+    elif lesson.transcript_status == "failed":
+        error = _esc(lesson.error_message or "unknown error")
+        transcript_inner = f"<p><em>Transcript fetch failed: {error}. Try re-enriching this lesson.</em></p>"
+    else:
+        transcript_inner = "<p><em>Transcript not yet fetched. Run enrichment to populate.</em></p>"
+
+    links = []
+    if lesson.ted_url:
+        links.append(f'<li>TED-Ed Lesson: <a href="{lesson.ted_url}">{lesson.ted_url}</a></li>')
+        links.append(f'<li>TED-Ed Quiz / Discussion: <a href="{lesson.ted_url}#review">{lesson.ted_url}#review</a></li>')
+    if lesson.youtube_url:
+        links.append(f'<li>YouTube Video: <a href="{lesson.youtube_url}">{lesson.youtube_url}</a></li>')
+    links_html = "\n                ".join(links)
+
+    author_line = f'<p style="color:#666; font-size:1.1rem;">by {_esc(lesson.author)}</p>' if lesson.author else ""
+    title = _esc(lesson.title or lesson.lesson_id)
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{title} — Lesson Document</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #222; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 2rem; }}
+        h1 {{ font-size: 1.75rem; margin-bottom: 0.25rem; }}
+        h2 {{ font-size: 1.15rem; border-bottom: 2px solid #e62b1e; padding-bottom: 0.3rem; margin-bottom: 0.75rem; }}
+        .doc-meta {{ margin: 1rem 0 2rem; }}
+        .doc-meta dt {{ font-weight: 600; display: inline; }}
+        .doc-meta dt::after {{ content: ": "; }}
+        .doc-meta dd {{ display: inline; margin: 0; }}
+        .doc-meta dd::after {{ content: "\\A"; white-space: pre; }}
+        .doc-section {{ margin-bottom: 2rem; }}
+        .doc-transcript {{ font-size: 0.9rem; line-height: 1.8; white-space: pre-wrap; }}
+        .doc-links {{ list-style: none; padding: 0; }}
+        .doc-links li {{ margin-bottom: 0.25rem; }}
+        .doc-links a {{ color: #e62b1e; }}
+        @media print {{
+            @page {{ margin: 1in 0.75in; size: letter; }}
+            body {{ font-size: 11pt; max-width: 100%; padding: 0; }}
+            .doc-links a {{ color: #000; }}
+            .doc-links a::after {{ content: " (" attr(href) ")"; font-size: 0.8em; color: #666; }}
+            img {{ display: none; }}
+        }}
+    </style>
+</head>
+<body>
+    <h1>{title}</h1>
+    {author_line}
+
+    <dl class="doc-meta">
+        {meta_html}
+    </dl>
+    {description_section}
+    {video_section}
+
+    <div class="doc-section">
+        <h2>Transcript</h2>
+        {transcript_inner}
+    </div>
+
+    <div class="doc-section">
+        <h2>Links &amp; Resources</h2>
+        <ul class="doc-links">
+            {links_html}
+        </ul>
+    </div>
+</body>
+</html>"""
+
+
+def _esc(text: str) -> str:
+    """Basic HTML escaping."""
+    return (text
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;"))
 
 
 def cmd_export(args, store):
