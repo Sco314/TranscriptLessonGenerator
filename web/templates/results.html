@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Results — TED-Ed Lesson Database{% endblock %}
+{% block content %}
+<div class="results-page">
+    <h1>Submission Results</h1>
+
+    {% set new_count = results | selectattr('was_new', 'defined') | selectattr('was_new') | list | length %}
+    {% set existing_count = results | selectattr('was_new', 'defined') | rejectattr('was_new') | list | length %}
+    {% set error_count = results | selectattr('error', 'defined') | list | length %}
+
+    <p class="results-summary">
+        {{ results|length }} URL{{ 's' if results|length != 1 else '' }} processed:
+        <strong>{{ new_count }} new</strong>,
+        {{ existing_count }} existing
+        {% if error_count %}, <span class="text-error">{{ error_count }} error{{ 's' if error_count != 1 else '' }}</span>{% endif %}
+    </p>
+
+    <div class="results-list">
+        {% for r in results %}
+        {% if r.get('error') %}
+        <div class="result-item result-error">
+            <span class="result-badge badge-fail">ERROR</span>
+            <span>{{ r.url }}: {{ r.error }}</span>
+        </div>
+        {% elif r.was_new %}
+        <div class="result-item result-new">
+            <span class="result-badge badge-ok">NEW</span>
+            <a href="{{ url_for('lesson_detail', lesson_id=r.lesson.lesson_id) }}">
+                {{ r.lesson.title or r.lesson.lesson_id }}
+            </a>
+            <span class="result-status">
+                scrape: {{ r.lesson.scrape_status or 'pending' }},
+                transcript: {{ r.lesson.transcript_status or 'pending' }}
+            </span>
+        </div>
+        {% else %}
+        <div class="result-item result-exists">
+            <span class="result-badge badge-pending">EXISTS</span>
+            <a href="{{ url_for('lesson_detail', lesson_id=r.lesson.lesson_id) }}">
+                {{ r.lesson.title or r.lesson.lesson_id }}
+            </a>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <div class="results-actions">
+        <a href="{{ url_for('index') }}" class="btn">Browse All Lessons</a>
+        <a href="{{ url_for('submit_form') }}" class="btn btn-secondary">Submit More</a>
+    </div>
+</div>
+{% endblock %}

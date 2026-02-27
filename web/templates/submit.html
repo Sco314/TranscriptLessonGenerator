@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Submit Lessons — TED-Ed Lesson Database{% endblock %}
+{% block content %}
+<div class="submit-page">
+    <h1>Submit Lessons</h1>
+    <p>Paste TED-Ed lesson URLs, YouTube URLs, or a collection URL. One URL per line.</p>
+
+    {% if error %}
+    <div class="error-box">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('submit_urls') }}" class="submit-form">
+        <textarea name="urls" rows="8" class="url-input" placeholder="https://ed.ted.com/lessons/the-prison-break-riddle
+https://ed.ted.com/lessons/can-you-solve-the-bridge-riddle
+https://www.youtube.com/watch?v=..."
+        >{{ request.form.get('urls', '') }}</textarea>
+
+        <div class="submit-options">
+            <label class="checkbox-label">
+                <input type="checkbox" name="is_collection" {{ 'checked' if request.form.get('is_collection') else '' }}>
+                This is a collection URL (import all lessons from the collection page)
+            </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Submit</button>
+    </form>
+
+    <div class="submit-help">
+        <h3>Supported URL formats:</h3>
+        <ul>
+            <li><code>https://ed.ted.com/lessons/the-prison-break-riddle</code> — TED-Ed lesson page</li>
+            <li><code>https://www.youtube.com/watch?v=XXXXXXXXXXX</code> — YouTube video</li>
+            <li><code>https://ed.ted.com/collections/public-speaking-101</code> — collection (check the box above)</li>
+        </ul>
+        <p>The system will automatically scrape metadata and fetch transcripts for new lessons.</p>
+    </div>
+</div>
+{% endblock %}
