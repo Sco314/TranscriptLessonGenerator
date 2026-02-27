@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Results — TED-Ed Lesson Database{% endblock %}
+{% block content %}
+<div class="results-page">
+    <h1>Submission Results</h1>
+
+    {% set new_count = results | selectattr('was_new', 'defined') | selectattr('was_new') | list | length %}
+    {% set existing_count = results | selectattr('was_new', 'defined') | rejectattr('was_new') | list | length %}
+    {% set error_count = results | selectattr('error', 'defined') | list | length %}
+
+    <p class="results-summary">
+        {{ results|length }} URL{{ 's' if results|length != 1 else '' }} processed:
+        <strong>{{ new_count }} new</strong>,
+        {{ existing_count }} existing
+        {% if error_count %}, <span class="text-error">{{ error_count }} error{{ 's' if error_count != 1 else '' }}</span>{% endif %}
+    </p>
+
+    {% if job_id %}
+    <div class="enrichment-status" id="enrichment-status" data-job-id="{{ job_id }}">
+        <p class="enrichment-label">Enriching {{ new_count }} new lesson{{ 's' if new_count != 1 else '' }}...</p>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+        </div>
+        <p class="enrichment-detail" id="enrichment-detail">Starting...</p>
+    </div>
+    {% endif %}
+
+    <div class="results-list">
+        {% for r in results %}
+        {% if r.get('error') %}
+        <div class="result-item result-error">
+            <span class="result-badge badge-fail">ERROR</span>
+            <span>{{ r.url }}: {{ r.error }}</span>
+        </div>
+        {% elif r.was_new %}
+        <div class="result-item result-new" id="result-{{ r.lesson.lesson_id }}">
+            <span class="result-badge badge-ok">NEW</span>
+            <a href="{{ url_for('lesson_detail', lesson_id=r.lesson.lesson_id) }}">
+                {{ r.lesson.title or r.lesson.lesson_id }}
+            </a>
+            <span class="result-status" id="status-{{ r.lesson.lesson_id }}">
+                {% if job_id %}enriching...{% else %}
+                scrape: {{ r.lesson.scrape_status or 'pending' }},
+                transcript: {{ r.lesson.transcript_status or 'pending' }}
+                {% endif %}
+            </span>
+        </div>
+        {% else %}
+        <div class="result-item result-exists">
+            <span class="result-badge badge-pending">EXISTS</span>
+            <a href="{{ url_for('lesson_detail', lesson_id=r.lesson.lesson_id) }}">
+                {{ r.lesson.title or r.lesson.lesson_id }}
+            </a>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <div class="results-actions">
+        <a href="{{ url_for('index') }}" class="btn">Browse All Lessons</a>
+        <a href="{{ url_for('submit_form') }}" class="btn btn-secondary">Submit More</a>
+    </div>
+</div>
+
+{% if job_id %}
+<script>
+(function() {
+    var jobId = {{ job_id|tojson }};
+    var statusUrl = {{ url_for('submit_status', job_id='')|tojson }} + jobId;
+    var bar = document.getElementById('progress-fill');
+    var detail = document.getElementById('enrichment-detail');
+    var container = document.getElementById('enrichment-status');
+
+    function poll() {
+        fetch(statusUrl)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var pct = data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
+                bar.style.width = pct + '%';
+                detail.textContent = data.completed + ' of ' + data.total + ' enriched';
+
+                // Update individual statuses
+                (data.results || []).forEach(function(r) {
+                    var el = document.getElementById('status-' + r.lesson_id);
+                    if (el) {
+                        el.textContent = 'scrape: ' + (r.scrape_status || 'pending') +
+                                         ', transcript: ' + (r.transcript_status || 'pending');
+                    }
+                });
+
+                if (data.status === 'done') {
+                    container.querySelector('.enrichment-label').textContent = 'Enrichment complete!';
+                    bar.style.width = '100%';
+                    container.classList.add('enrichment-done');
+                } else {
+                    setTimeout(poll, 2000);
+                }
+            })
+            .catch(function() {
+                setTimeout(poll, 5000);
+            });
+    }
+
+    setTimeout(poll, 1000);
+})();
+</script>
+{% endif %}
+{% endblock %}

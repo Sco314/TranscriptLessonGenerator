@@ -1,4 +1,4 @@
-"""CLI entry point for ted_lessons — add, enrich, list, search, show, export."""
+"""CLI entry point for ted_lessons — add, enrich, list, search, show, export, migrate."""
 
 from __future__ import annotations
 
@@ -6,11 +6,12 @@ import argparse
 import logging
 import sys
 
+from .dedup import collapse_duplicates
 from .enricher import enrich
 from .http_client import HttpClient
 from .models import Lesson
 from .scraper import scrape_collection_page
-from .store import LessonStore, DEFAULT_CSV_PATH
+from .store import CSVStore, SQLiteStore, get_store, DEFAULT_CSV_PATH, DEFAULT_SQLITE_PATH
 
 
 def main(argv: list[str] | None = None):
@@ -19,7 +20,11 @@ def main(argv: list[str] | None = None):
         description="TED-Ed Lesson Database — scrape, enrich, and manage TED-Ed lesson data.",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
-    parser.add_argument("--data", default=None, help=f"Path to CSV file (default: {DEFAULT_CSV_PATH})")
+    parser.add_argument(
+        "--backend", choices=["auto", "csv", "sqlite"], default="auto",
+        help="Storage backend (default: auto — uses sqlite if db exists, else csv)",
+    )
+    parser.add_argument("--data", default=None, help="Path to data file (csv or sqlite db)")
 
     sub = parser.add_subparsers(dest="command")
 
@@ -48,7 +53,13 @@ def main(argv: list[str] | None = None):
 
     # --- export ---
     p_export = sub.add_parser("export", help="Export to CSV")
-    p_export.add_argument("--csv", default="data/ted_ed_master_list.csv", help="Output CSV path")
+    p_export.add_argument("--csv", default=str(DEFAULT_CSV_PATH), help="Output CSV path")
+
+    # --- migrate ---
+    p_migrate = sub.add_parser("migrate", help="Migrate CSV data to SQLite")
+    p_migrate.add_argument("--csv", default=str(DEFAULT_CSV_PATH), help="Source CSV path")
+    p_migrate.add_argument("--db", default=str(DEFAULT_SQLITE_PATH), help="Target SQLite path")
+    p_migrate.add_argument("--dry-run", action="store_true", help="Preview without writing")
 
     args = parser.parse_args(argv)
 
@@ -62,7 +73,12 @@ def main(argv: list[str] | None = None):
         parser.print_help()
         return
 
-    store = LessonStore(args.data)
+    # Migration doesn't need the normal store
+    if args.command == "migrate":
+        cmd_migrate(args)
+        return
+
+    store = get_store(backend=args.backend, path=args.data)
 
     if args.command == "add":
         cmd_add(args, store)
@@ -82,7 +98,7 @@ def main(argv: list[str] | None = None):
 # Subcommands
 # ---------------------------------------------------------------------------
 
-def cmd_add(args, store: LessonStore):
+def cmd_add(args, store):
     """Add lessons from URLs, file, or collection."""
     urls = list(args.urls) if args.urls else []
 
@@ -153,7 +169,7 @@ def cmd_add(args, store: LessonStore):
     print(f"\nDone. Added: {added}, Already existed: {existed}, Total: {len(store)}")
 
 
-def cmd_enrich(args, store: LessonStore):
+def cmd_enrich(args, store):
     """Fill missing fields on existing lessons."""
     pending = store.needs_enrichment(retry_failed=args.retry_failed)
     if not pending:
@@ -169,15 +185,18 @@ def cmd_enrich(args, store: LessonStore):
         print(f"           scrape: {lesson.scrape_status}, transcript: {lesson.transcript_status}")
         if lesson.error_message:
             print(f"           error: {lesson.error_message}")
+        # Save after each lesson for SQLite (cheap), batch for CSV
+        if isinstance(store, SQLiteStore):
+            store.add_or_update(lesson)
 
     store.save()
     print(f"\nDone. Enriched {len(pending)} lesson(s).")
 
 
-def cmd_list(args, store: LessonStore):
+def cmd_list(args, store):
     """List all lessons."""
-    lessons = store.lessons
-    if args.collection:
+    lessons = store.all_lessons()
+    if hasattr(args, "collection") and args.collection:
         q = args.collection.lower()
         lessons = [l for l in lessons if q in l.collection.lower()]
 
@@ -196,7 +215,7 @@ def cmd_list(args, store: LessonStore):
     print(f"\n{len(lessons)} lesson(s). S=scrape status, T=transcript status (+ok, !fail, -unavail, ?pending)")
 
 
-def cmd_search(args, store: LessonStore):
+def cmd_search(args, store):
     """Search lessons."""
     results = store.search(args.query)
     if not results:
@@ -214,12 +233,12 @@ def cmd_search(args, store: LessonStore):
         print()
 
 
-def cmd_show(args, store: LessonStore):
+def cmd_show(args, store):
     """Show full details for a lesson."""
     lesson = store.find_by_id(args.lesson_id)
     if not lesson:
         # Try substring match
-        for l in store.lessons:
+        for l in store.all_lessons():
             if args.lesson_id in l.lesson_id:
                 lesson = l
                 break
@@ -237,7 +256,8 @@ def cmd_show(args, store: LessonStore):
     print(f"  TED URL:     {lesson.ted_url}")
     print(f"  YouTube URL: {lesson.youtube_url}")
     print(f"  Thumbnail:   {lesson.thumbnail_url}")
-    print(f"  Description: {lesson.description[:200]}{'...' if len(lesson.description) > 200 else ''}")
+    desc = lesson.description
+    print(f"  Description: {desc[:200]}{'...' if len(desc) > 200 else ''}")
     print(f"  Tags:        {lesson.tags}")
     print()
     print(f"  Scrape status:     {lesson.scrape_status}")
@@ -252,14 +272,42 @@ def cmd_show(args, store: LessonStore):
         print(f"  {preview}{'...' if len(lesson.transcript) > 500 else ''}")
 
 
-def cmd_export(args, store: LessonStore):
+def cmd_export(args, store):
     """Export lessons to CSV."""
-    from pathlib import Path
-    from .store import LessonStore as LS
-    export_store = LessonStore(args.csv)
-    export_store._lessons = store.lessons
-    export_store.save()
+    csv_store = CSVStore(args.csv)
+    csv_store._lessons = store.all_lessons()
+    csv_store.save()
     print(f"Exported {len(store)} lessons to {args.csv}")
+
+
+def cmd_migrate(args):
+    """Migrate CSV data to SQLite."""
+    csv_store = CSVStore(args.csv)
+    lessons = csv_store.all_lessons()
+
+    if not lessons:
+        print(f"No lessons found in {args.csv}. Nothing to migrate.")
+        return
+
+    print(f"Loaded {len(lessons)} lesson(s) from {args.csv}")
+
+    deduped, duplicates, skipped = collapse_duplicates(lessons)
+    for msg in skipped:
+        print(f"  [SKIP] {msg}")
+    print(f"After dedup: {len(deduped)} unique lesson(s) ({duplicates} duplicate(s) collapsed)")
+
+    if args.dry_run:
+        print("[DRY RUN] Would write to SQLite. Exiting.")
+        for lid, lesson in deduped.items():
+            print(f"  {lid}: {lesson.title or '(untitled)'} [S:{lesson.scrape_status} T:{lesson.transcript_status}]")
+        return
+
+    sqlite_store = SQLiteStore(args.db)
+    for lesson in deduped.values():
+        sqlite_store.add_or_update(lesson)
+    sqlite_store.save()
+    sqlite_store.close()
+    print(f"Migrated {len(deduped)} lesson(s) to {args.db}")
 
 
 # ---------------------------------------------------------------------------

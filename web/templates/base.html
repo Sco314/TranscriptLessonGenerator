@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TED-Ed Lesson Database{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('index') }}" class="nav-brand">TED-Ed Lessons</a>
+        <div class="nav-links">
+            <a href="{{ url_for('index') }}">Browse</a>
+            <a href="{{ url_for('submit_form') }}">Submit</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>TED-Ed Lesson Database &mdash; Built for teachers.</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Browse Lessons — TED-Ed Lesson Database{% endblock %}
+{% block content %}
+<div class="browse-header">
+    <h1>TED-Ed Lessons</h1>
+    <p class="subtitle">{{ total }} lesson{{ 's' if total != 1 else '' }} in the database</p>
+
+    <form class="search-form" method="get" action="{{ url_for('index') }}">
+        <input type="text" name="q" value="{{ q }}" placeholder="Search lessons..." class="search-input" autofocus>
+        <select name="collection" class="collection-filter">
+            <option value="">All Collections</option>
+            {% for c in collections %}
+            <option value="{{ c }}" {{ 'selected' if c == collection else '' }}>{{ c }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn">Search</button>
+        {% if q or collection %}
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">Clear</a>
+        {% endif %}
+    </form>
+</div>
+
+{% if q or collection %}
+<p class="results-count">
+    {{ total_results }} result{{ 's' if total_results != 1 else '' }}
+    {% if q %}for "{{ q }}"{% endif %}
+    {% if collection %}in "{{ collection }}"{% endif %}
+</p>
+{% endif %}
+
+{% if lessons %}
+<div class="lesson-grid">
+    {% for lesson in lessons %}
+    <a href="{{ url_for('lesson_detail', lesson_id=lesson.lesson_id) }}" class="lesson-card">
+        {% if lesson.thumbnail_url %}
+        <img src="{{ lesson.thumbnail_url }}" alt="{{ lesson.title or lesson.lesson_id }}" class="card-thumb" loading="lazy">
+        {% else %}
+        <div class="card-thumb card-thumb-placeholder">No thumbnail</div>
+        {% endif %}
+        <div class="card-body">
+            <h3 class="card-title">{{ lesson.title or lesson.lesson_id }}</h3>
+            {% if lesson.author %}
+            <p class="card-meta">{{ lesson.author }}</p>
+            {% endif %}
+            {% if lesson.collection %}
+            <span class="card-tag">{{ lesson.collection }}</span>
+            {% endif %}
+            {% if lesson.duration %}
+            <span class="card-duration">{{ lesson.duration }}</span>
+            {% endif %}
+            <div class="card-status">
+                <span class="status-dot {{ 'status-ok' if lesson.scrape_status == 'ok' else 'status-pending' if not lesson.scrape_status else 'status-fail' }}" title="Scrape: {{ lesson.scrape_status or 'pending' }}"></span>
+                <span class="status-dot {{ 'status-ok' if lesson.transcript_status == 'ok' else 'status-pending' if not lesson.transcript_status else 'status-unavail' if lesson.transcript_status == 'unavailable' else 'status-fail' }}" title="Transcript: {{ lesson.transcript_status or 'pending' }}"></span>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<nav class="pagination">
+    {% if page > 1 %}
+    <a href="{{ url_for('index', q=q, collection=collection, page=page-1) }}" class="btn btn-small">&laquo; Prev</a>
+    {% endif %}
+    <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="{{ url_for('index', q=q, collection=collection, page=page+1) }}" class="btn btn-small">Next &raquo;</a>
+    {% endif %}
+</nav>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+    <p>No lessons found. <a href="{{ url_for('submit_form') }}">Submit some TED-Ed URLs</a> to get started.</p>
+</div>
+{% endif %}
+{% endblock %}

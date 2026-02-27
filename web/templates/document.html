@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ lesson.title or lesson.lesson_id }} — Lesson Document</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('index') }}" class="nav-brand">TED-Ed Lessons</a>
+        <div class="nav-links">
+            <a href="{{ url_for('lesson_detail', lesson_id=lesson.lesson_id) }}">Back to Lesson</a>
+        </div>
+    </nav>
+
+    <div class="lesson-doc">
+        <h1>{{ lesson.title or lesson.lesson_id }}</h1>
+        {% if lesson.author %}
+        <p class="lesson-author">by {{ lesson.author }}</p>
+        {% endif %}
+
+        <dl class="doc-meta">
+            {% if lesson.collection %}
+            <dt>Collection</dt><dd>{{ lesson.collection }}</dd>
+            {% endif %}
+            {% if lesson.category %}
+            <dt>Category</dt><dd>{{ lesson.category }}</dd>
+            {% endif %}
+            {% if lesson.duration %}
+            <dt>Duration</dt><dd>{{ lesson.duration }}</dd>
+            {% endif %}
+            {% if lesson.views %}
+            <dt>Views</dt><dd>{{ lesson.views }}</dd>
+            {% endif %}
+        </dl>
+
+        {% if lesson.description %}
+        <div class="doc-section">
+            <h2>Lesson Overview</h2>
+            <p>{{ lesson.description }}</p>
+        </div>
+        {% endif %}
+
+        {% if lesson.youtube_id %}
+        <div class="doc-section">
+            <h2>Video</h2>
+            {% if lesson.thumbnail_url %}
+            <img src="{{ lesson.thumbnail_url }}" alt="{{ lesson.title }}" style="max-width:100%; border-radius:8px; margin-bottom:0.5rem;">
+            {% endif %}
+            <p>Watch: <a href="{{ lesson.youtube_url }}">{{ lesson.youtube_url }}</a></p>
+        </div>
+        {% endif %}
+
+        <div class="doc-section">
+            <h2>Transcript</h2>
+            {% if lesson.transcript %}
+            <div class="doc-transcript">{{ lesson.transcript }}</div>
+            {% elif lesson.transcript_status == 'unavailable' %}
+            <p><em>No transcript available for this video.</em></p>
+            {% elif lesson.transcript_status == 'failed' %}
+            <p><em>Transcript fetch failed: {{ lesson.error_message or 'unknown error' }}. Try re-enriching this lesson.</em></p>
+            {% else %}
+            <p><em>Transcript not yet fetched. Run enrichment to populate.</em></p>
+            {% endif %}
+        </div>
+
+        <div class="doc-section">
+            <h2>Links</h2>
+            <ul class="doc-links">
+                {% if lesson.ted_url %}
+                <li>TED-Ed Lesson: <a href="{{ lesson.ted_url }}">{{ lesson.ted_url }}</a></li>
+                {% endif %}
+                {% if lesson.youtube_url %}
+                <li>YouTube Video: <a href="{{ lesson.youtube_url }}">{{ lesson.youtube_url }}</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,6 +1,7 @@
 """Enrichment orchestrator — takes a Lesson and fills all missing fields.
 
 Handles partial success: stores whatever succeeded even if other parts fail.
+Never overwrites a successful transcript with a failed attempt.
 """
 
 from __future__ import annotations
@@ -20,9 +21,10 @@ def enrich(lesson: Lesson, client: HttpClient) -> Lesson:
     """Fill missing fields on a Lesson by scraping TED-Ed and YouTube.
 
     Mutates and returns the same Lesson object. Handles partial failure:
-    - If TED scrape succeeds but transcript fails → lesson is still updated
-    - If TED scrape fails → lesson.scrape_status = "failed"
-    - Transcript failure → lesson.transcript_status = "failed"
+    - If TED scrape succeeds but transcript fails -> lesson is still updated
+    - If TED scrape fails -> lesson.scrape_status = "failed"
+    - Transcript failure -> lesson.transcript_status = "failed"
+    - Prior successful transcript is NEVER overwritten by a failed attempt
     """
     # Step 1: Scrape TED-Ed page (if we have a URL and need data)
     if lesson.ted_url and lesson.scrape_status != "ok":
@@ -73,7 +75,10 @@ def _enrich_from_ted(lesson: Lesson, client: HttpClient):
 
 
 def _enrich_transcript(lesson: Lesson, client: HttpClient):
-    """Fetch the YouTube transcript."""
+    """Fetch the YouTube transcript. Never overwrites existing good transcript."""
+    # Preserve prior successful transcript
+    prior_transcript = lesson.transcript if lesson.transcript_status == "ok" else ""
+
     log.info("Fetching transcript for video: %s", lesson.youtube_id)
     try:
         result = fetch_transcript(lesson.youtube_id, client)
@@ -81,11 +86,21 @@ def _enrich_transcript(lesson: Lesson, client: HttpClient):
         log.warning("Transcript fetch failed for %s: %s", lesson.youtube_id, e)
         lesson.transcript_status = "failed"
         lesson.error_message = f"Transcript: {e}"
+        # Restore prior transcript if we had one
+        if prior_transcript:
+            lesson.transcript = prior_transcript
+            lesson.transcript_status = "ok"
         return
 
-    lesson.transcript_status = result["status"]
     if result["status"] == "ok":
         lesson.transcript = result["text"]
+        lesson.transcript_status = "ok"
         lesson.error_message = ""
     else:
+        lesson.transcript_status = result["status"]
         lesson.error_message = result.get("error", "Unknown transcript error")
+        # Restore prior transcript if this attempt failed
+        if prior_transcript:
+            lesson.transcript = prior_transcript
+            lesson.transcript_status = "ok"
+            lesson.error_message = ""

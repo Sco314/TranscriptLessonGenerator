@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Not Found — TED-Ed Lesson Database{% endblock %}
+{% block content %}
+<div class="empty-state">
+    <h1>{{ message or 'Lesson Not Found' }}</h1>
+    <p>{{ message or "The lesson you're looking for doesn't exist in the database." }}</p>
+    <p><a href="{{ url_for('index') }}">Browse all lessons</a> or <a href="{{ url_for('submit_form') }}">submit a new one</a>.</p>
+</div>
+{% endblock %}
