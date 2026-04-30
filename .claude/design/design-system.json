@@ -1,0 +1,137 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "$description": "Design tokens for the TranscriptLessonGenerator worksheet system. Source of truth: lesson_builder/constants.py",
+
+  "color": {
+    "$type": "color",
+
+    "neutral": {
+      "white":         { "$value": "#FFFFFF", "$description": "Page background, hidden text" },
+      "black":         { "$value": "#000000", "$description": "Body text" },
+      "helper-gray":   { "$value": "#666666", "$description": "Helper text, instructions" },
+      "dark-gray":     { "$value": "#555555", "$description": "Subtitle, lighter helper" },
+      "alt-row":       { "$value": "#F5F5F5", "$description": "Alternating table row background" },
+      "table-border":  { "$value": "#AAAAAA", "$description": "All table borders" },
+      "fill-line":     { "$value": "#CCCCCC", "$description": "Underline color for student write-on lines" }
+    },
+
+    "semantic": {
+      "link":          { "$value": "#1565C0" },
+      "error":         { "$value": "#C62828" },
+      "success":       { "$value": "#2E7D32" }
+    },
+
+    "callout-bg": {
+      "tip":           { "$value": "#E8F5E9", "$description": "Light green — tip box background" },
+      "warning":       { "$value": "#FFEBEE", "$description": "Light red — warning box background" },
+      "connection":    { "$value": "#E8F5E9", "$description": "Light green — connection box background" },
+      "question-1":    { "$value": "#E3F2FD", "$description": "Light blue — odd-indexed question banners" },
+      "question-2":    { "$value": "#FFF3E0", "$description": "Light orange — even-indexed question banners" }
+    },
+
+    "question-text": {
+      "question-1":    { "$value": "#1565C0", "$description": "Blue — odd-indexed question banner text" },
+      "question-2":    { "$value": "#E65100", "$description": "Orange — even-indexed question banner text" }
+    },
+
+    "theme": {
+      "$description": "Each theme has primary (used for title, section headers, framework labels) and primary-light (used for info-box and self-check-box backgrounds)",
+      "blue":   { "primary": { "$value": "#1565C0" }, "primary-light": { "$value": "#E3F2FD" } },
+      "purple": { "primary": { "$value": "#6A1B9A" }, "primary-light": { "$value": "#F3E5F5" } },
+      "teal":   { "primary": { "$value": "#00695C" }, "primary-light": { "$value": "#E0F2F1" } },
+      "brown":  { "primary": { "$value": "#5D4037" }, "primary-light": { "$value": "#EFEBE9" } },
+      "green":  { "primary": { "$value": "#2E7D32" }, "primary-light": { "$value": "#E8F5E9" } },
+      "orange": { "primary": { "$value": "#E65100" }, "primary-light": { "$value": "#FFF3E0" } },
+      "navy":   { "primary": { "$value": "#1A237E" }, "primary-light": { "$value": "#E8EAF6" } }
+    },
+
+    "framework": {
+      "$description": "Color coding for letter-based pedagogical frameworks",
+      "STAR": {
+        "S": { "color": { "$value": "#C62828" }, "bg": { "$value": "#FFEBEE" }, "label": "Situation" },
+        "T": { "color": { "$value": "#EF6C00" }, "bg": { "$value": "#FFF3E0" }, "label": "Task" },
+        "A": { "color": { "$value": "#2E7D32" }, "bg": { "$value": "#E8F5E9" }, "label": "Action" },
+        "R": { "color": { "$value": "#1565C0" }, "bg": { "$value": "#E3F2FD" }, "label": "Result" }
+      },
+      "CARL": {
+        "C": { "color": { "$value": "#6A1B9A" }, "bg": { "$value": "#F3E5F5" }, "label": "Context" },
+        "A": { "color": { "$value": "#1565C0" }, "bg": { "$value": "#E3F2FD" }, "label": "Action" },
+        "R": { "color": { "$value": "#2E7D32" }, "bg": { "$value": "#E8F5E9" }, "label": "Result" },
+        "L": { "color": { "$value": "#E65100" }, "bg": { "$value": "#FFF3E0" }, "label": "Learned" }
+      },
+      "FOURP": {
+        "color": { "$value": "#6A1B9A" },
+        "bg": { "$value": "#F3E5F5" },
+        "labels": ["Personal", "Professional", "Positive", "Pithy"]
+      }
+    }
+  },
+
+  "typography": {
+    "font-family": { "$type": "fontFamily", "$value": "Arial", "$description": "Universal font choice — works in Word, Google Docs, browsers" },
+    "size": {
+      "$type": "fontSize",
+      "$description": "Values in points (Word half-points / 2)",
+      "title":          { "$value": "17pt", "$description": "Main document title" },
+      "subtitle":       { "$value": "10pt", "$description": "Italicized descriptor under title" },
+      "section-header": { "$value": "11pt", "$description": "Bold colored section headers" },
+      "body":           { "$value": "10pt", "$description": "Standard paragraph text" },
+      "table-header":   { "$value": "9pt",  "$description": "Column headers" },
+      "table-body":     { "$value": "9pt",  "$description": "Table cell content" },
+      "helper":         { "$value": "8pt",  "$description": "Italicized tips, instructions" },
+      "link":           { "$value": "9pt",  "$description": "URL display" },
+      "page-number":    { "$value": "9pt",  "$description": "Header/footer page numbers" }
+    },
+    "weight": {
+      "regular": { "$type": "fontWeight", "$value": 400 },
+      "bold":    { "$type": "fontWeight", "$value": 700 }
+    }
+  },
+
+  "spacing": {
+    "$type": "dimension",
+    "$description": "Values in twips (Word native unit; 1440 twips = 1 inch). Convert to other units as needed.",
+    "after-title":           { "$value": "40twip" },
+    "after-subtitle":        { "$value": "60twip" },
+    "after-video-link":      { "$value": "140twip" },
+    "after-name-line":       { "$value": "160twip" },
+    "before-section":        { "$value": "160twip" },
+    "after-section-header":  { "$value": "60twip" },
+    "after-paragraph":       { "$value": "120twip" },
+    "after-fill-line":       { "$value": "60twip" },
+    "between-questions":     { "$value": "120twip" },
+    "after-numbered-question": { "$value": "180twip" }
+  },
+
+  "page": {
+    "$type": "dimension",
+    "format":         { "$value": "US Letter (8.5\" × 11\")" },
+    "width":          { "$value": "12240twip" },
+    "height":         { "$value": "15840twip" },
+    "margin":         { "$value": "720twip", "$description": "0.5 inch on all sides; top becomes 900twip when running header is enabled" },
+    "content-width":  { "$value": "10800twip", "$description": "Width minus left+right margins" }
+  },
+
+  "table": {
+    "border": {
+      "color": { "$value": "#AAAAAA" },
+      "width": { "$value": "1pt" },
+      "style": { "$value": "single" }
+    },
+    "cell-padding": {
+      "top":    { "$value": "60twip" },
+      "right":  { "$value": "100twip" },
+      "bottom": { "$value": "60twip" },
+      "left":   { "$value": "100twip" }
+    },
+    "shading-type": { "$value": "clear", "$description": "Always ShadingType.CLEAR — never SOLID (renders black on some platforms)" }
+  },
+
+  "convention": {
+    "page-count":         { "$value": "2 pages, front and back, always" },
+    "fill-blank-style":   { "$value": "underscores in inline runs OR paragraph with bottom border", "$description": "Never boxes" },
+    "callout-icons":      { "$value": "Emoji-based: 💡 tip, ⚠️ warning, 🔗 connection, ☐ checkbox", "$description": "Emoji is allowed in callouts; never in body text" },
+    "strategy-naming":    { "$value": "Named, never numbered", "$description": "Use 'Taking a Pause' not 'Strategy #1'" },
+    "color-policy":       { "$value": "High-contrast, printable in grayscale", "$description": "Color is for emphasis only" }
+  }
+}

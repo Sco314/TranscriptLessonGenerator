@@ -97,7 +97,14 @@
 
     <div class="lesson-section">
         <h2>Lesson Document</h2>
-        <a href="{{ url_for('lesson_document', lesson_id=lesson.lesson_id) }}" class="btn">View Printable Lesson</a>
+        <div class="lesson-actions">
+            <a href="{{ url_for('lesson_document', lesson_id=lesson.lesson_id) }}" class="btn">View Printable Lesson</a>
+            {% if lesson.transcript and lesson.transcript_status == 'ok' %}
+            <a href="{{ url_for('activity_sheet_form', lesson_id=lesson.lesson_id) }}" class="btn btn-accent">Generate Activity Sheet</a>
+            {% else %}
+            <span class="btn btn-disabled" title="A successful transcript is required to generate an activity sheet.">Generate Activity Sheet</span>
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endblock %}

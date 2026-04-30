@@ -25,6 +25,7 @@ from pathlib import Path
 
 from flask import (
     Flask, render_template, request, redirect, url_for, jsonify, abort, session,
+    send_from_directory,
 )
 
 # Add parent to path for ted_lessons import
@@ -36,6 +37,9 @@ from ted_lessons.enricher import enrich
 from ted_lessons.http_client import HttpClient
 from ted_lessons.scraper import scrape_collection_page
 from ted_lessons.store import SQLiteStore, DEFAULT_SQLITE_PATH
+from lesson_builder import THEMES
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import activity_generator  # noqa: E402  (sibling module, web/ has no __init__.py)
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +55,20 @@ _store: SQLiteStore | None = None
 # Background enrichment jobs: job_id -> {status, results, total, completed}
 _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
+
+# Activity-sheet generation jobs: job_id -> {state, filename?, error?}
+_activity_jobs: dict[str, dict] = {}
+_activity_jobs_lock = threading.Lock()
+
+# Downloads directory (gitignored)
+DOWNLOADS_DIR = Path(
+    os.environ.get(
+        "WORKSHEET_DOWNLOADS_DIR",
+        str(Path(__file__).resolve().parent / "static" / "downloads"),
+    )
+)
+DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+_DOWNLOAD_TTL_SECONDS = 24 * 60 * 60
 
 
 def get_store() -> SQLiteStore:
@@ -183,6 +201,137 @@ def lesson_document(lesson_id: str):
     if not lesson:
         abort(404)
     return render_template("document.html", lesson=lesson)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Activity-sheet generation
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _cleanup_old_downloads() -> None:
+    """Best-effort prune of files older than _DOWNLOAD_TTL_SECONDS."""
+    try:
+        cutoff = time.time() - _DOWNLOAD_TTL_SECONDS
+        for f in DOWNLOADS_DIR.iterdir():
+            if f.is_file() and f.stat().st_mtime < cutoff:
+                f.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _start_activity_job(job_id: str, lesson_id: str, form_data: dict) -> None:
+    with _activity_jobs_lock:
+        _activity_jobs[job_id] = {"state": "running"}
+
+    thread = threading.Thread(
+        target=_run_activity_job,
+        args=(job_id, lesson_id, form_data),
+        daemon=True,
+    )
+    thread.start()
+
+
+def _run_activity_job(job_id: str, lesson_id: str, form_data: dict) -> None:
+    db_path = os.environ.get("TED_LESSONS_DB", str(DEFAULT_SQLITE_PATH))
+    store = SQLiteStore(db_path)
+    try:
+        lesson = store.find_by_id(lesson_id)
+        if not lesson:
+            with _activity_jobs_lock:
+                _activity_jobs[job_id] = {"state": "error", "error": "Lesson not found."}
+            return
+
+        filename = f"{job_id}.docx"
+        output_path = DOWNLOADS_DIR / filename
+        ok, err = activity_generator.generate(lesson, form_data, output_path)
+
+        with _activity_jobs_lock:
+            if ok:
+                _activity_jobs[job_id] = {
+                    "state": "done",
+                    "filename": filename,
+                    "title": lesson.title or lesson.lesson_id,
+                }
+            else:
+                _activity_jobs[job_id] = {
+                    "state": "error",
+                    "error": err or "Generation failed.",
+                }
+    except Exception as e:
+        log.exception("Activity-sheet generation failed for %s", lesson_id)
+        with _activity_jobs_lock:
+            _activity_jobs[job_id] = {
+                "state": "error",
+                "error": f"{type(e).__name__}: {e}",
+            }
+    finally:
+        store.close()
+
+
+@app.route("/lesson/<lesson_id>/activity-sheet", methods=["GET", "POST"])
+def activity_sheet_form(lesson_id: str):
+    """Show the briefing form (GET) or kick off generation (POST)."""
+    store = get_store()
+    lesson = store.find_by_id(lesson_id)
+    if not lesson:
+        abort(404)
+
+    has_transcript = bool(lesson.transcript) and lesson.transcript_status == "ok"
+
+    if request.method == "POST":
+        if not has_transcript:
+            return render_template(
+                "activity_sheet_form.html",
+                lesson=lesson, themes=THEMES, has_transcript=False,
+            )
+
+        form_data = {
+            "format": request.form.get("format", "follow_along"),
+            "framework": request.form.get("framework", "Auto"),
+            "theme": request.form.get("theme", "teal"),
+            "candidates": request.form.get("candidates", ""),
+            "connections": request.form.get("connections", ""),
+            "vocab": request.form.get("vocab", ""),
+            "notes": request.form.get("notes", ""),
+        }
+
+        if form_data["theme"] not in THEMES:
+            form_data["theme"] = "teal"
+
+        _cleanup_old_downloads()
+        job_id = str(uuid.uuid4())[:8]
+        _start_activity_job(job_id, lesson.lesson_id, form_data)
+
+        return render_template(
+            "activity_sheet_progress.html",
+            lesson=lesson, job_id=job_id,
+        )
+
+    return render_template(
+        "activity_sheet_form.html",
+        lesson=lesson, themes=THEMES, has_transcript=has_transcript,
+    )
+
+
+@app.route("/activity-sheet/status/<job_id>")
+def activity_sheet_status(job_id: str):
+    with _activity_jobs_lock:
+        job = _activity_jobs.get(job_id)
+    if not job:
+        return jsonify({"state": "error", "error": "Job not found."}), 404
+    return jsonify(job)
+
+
+@app.route("/activity-sheet/download/<job_id>")
+def activity_sheet_download(job_id: str):
+    with _activity_jobs_lock:
+        job = _activity_jobs.get(job_id)
+    if not job or job.get("state") != "done":
+        abort(404)
+    filename = job["filename"]
+    download_name = f"{(job.get('title') or 'activity_sheet').replace(' ', '_')}.docx"
+    return send_from_directory(
+        DOWNLOADS_DIR, filename, as_attachment=True, download_name=download_name,
+    )
 
 
 @app.route("/submit", methods=["GET"])
