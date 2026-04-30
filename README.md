@@ -99,6 +99,38 @@ The JSON worksheet spec is the seam between the LLM and rendering — a future
 no-LLM mode can populate the same spec from a form. See
 `web/activity_generator.py` for the schema.
 
+## Deploying to Render (free tier)
+
+The repo ships with `render.yaml`, `runtime.txt`, and a `gunicorn` entry in
+`requirements.txt`. To deploy:
+
+1. Push this repo to GitHub.
+2. Sign in at [render.com](https://render.com), click **New → Blueprint**, and
+   point it at the GitHub repo. Render reads `render.yaml` and proposes the
+   service.
+3. Render asks for the value of `ANTHROPIC_API_KEY` (marked `sync: false` so
+   it's never committed). Paste your key. `FLASK_SECRET_KEY` is auto-generated.
+4. Click **Apply**. First build takes ~3 minutes.
+5. Visit `https://transcriptlessongenerator.onrender.com` (or whatever
+   subdomain Render assigns). The app starts with an empty lesson library —
+   use **Submit** to add lessons.
+
+**Free tier caveats:**
+
+- The instance sleeps after 15 minutes of inactivity. The first request after
+  sleep takes ~30 seconds to wake up.
+- The disk is ephemeral on redeploys. Lessons added via `/submit` persist
+  between sleeps but are wiped when the service is redeployed. If you need
+  persistence across deploys, attach a persistent disk (paid) or commit a
+  pre-populated `data/lessons.db` to the repo.
+- Single gunicorn worker, 4 threads. Plenty for a single-teacher tool. If you
+  scale up, replace the in-process `_jobs` dicts with Redis or a real queue.
+
+**Custom domain (optional):**
+
+Add the domain in the Render dashboard, then point your DNS at it. Cloudflare
+in front works fine — set proxy mode to DNS-only or full-proxy as you prefer.
+
 ## Working with Claude Design
 
 This repo is set up so [Claude Design](https://www.anthropic.com) can read your
