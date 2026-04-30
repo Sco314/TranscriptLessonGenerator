@@ -80,6 +80,51 @@ def get_store() -> SQLiteStore:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Demo seed (runs once on first boot if the DB is empty)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_seed_started = False
+_seed_lock = threading.Lock()
+
+
+def _maybe_start_demo_seed() -> None:
+    """If the lesson DB is empty, seed it with a few demo lessons in the
+    background. Idempotent + thread-safe + no-op when SEED_DEMO_LESSONS=0."""
+    global _seed_started
+    if os.environ.get("SEED_DEMO_LESSONS", "1") == "0":
+        return
+    with _seed_lock:
+        if _seed_started:
+            return
+        _seed_started = True
+
+    try:
+        if len(get_store()) > 0:
+            return
+    except Exception:
+        log.exception("Could not check store size for demo seed")
+        return
+
+    log.info("Lesson DB is empty — starting demo seed in background.")
+
+    def _run_seed():
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+            from scripts.seed_demo_lessons import seed
+            db_path = os.environ.get("TED_LESSONS_DB", str(DEFAULT_SQLITE_PATH))
+            local_store = SQLiteStore(db_path)
+            try:
+                summary = seed(local_store, enrich_new=True)
+                log.info("Demo seed finished: %s", summary)
+            finally:
+                local_store.close()
+        except Exception:
+            log.exception("Demo seed failed")
+
+    threading.Thread(target=_run_seed, daemon=True).start()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # CSRF protection
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -105,6 +150,12 @@ def _csrf_protect():
         token = request.form.get("_csrf_token", "")
         if not _validate_csrf_token(token):
             abort(403)
+
+
+@app.before_request
+def _bootstrap():
+    """One-shot startup tasks. Cheap after the first request."""
+    _maybe_start_demo_seed()
 
 
 # Make csrf_token available in all templates
