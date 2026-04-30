@@ -68,6 +68,12 @@
             {% if lesson.last_enriched %}
             <span class="meta-small">Last enriched: {{ lesson.last_enriched[:19] }}</span>
             {% endif %}
+            {% if lesson.scrape_status != 'ok' or lesson.transcript_status not in ('ok', 'unavailable') %}
+            <form method="post" action="{{ url_for('retry_enrichment', lesson_id=lesson.lesson_id) }}" style="display:inline">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-small">Retry enrichment</button>
+            </form>
+            {% endif %}
         </div>
 
         {% if lesson.error_message %}

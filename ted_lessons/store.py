@@ -14,6 +14,7 @@ import logging
 import os
 import sqlite3
 import tempfile
+import threading
 from pathlib import Path
 
 from .models import Lesson, CSV_COLUMNS
@@ -208,17 +209,22 @@ class SQLiteStore:
     def __init__(self, path: str | Path | None = None):
         self.path = Path(path) if path else DEFAULT_SQLITE_PATH
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn: sqlite3.Connection | None = None
+        # Thread-local connection storage. Python's sqlite3 connection objects
+        # are not safe to share across threads — each thread gets its own
+        # connection and SQLite (in WAL mode) handles concurrent reads/writes.
+        self._tls = threading.local()
         self._init_db()
 
     @property
     def conn(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._conn = sqlite3.connect(str(self.path))
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA foreign_keys=ON")
-        return self._conn
+        c = getattr(self._tls, "conn", None)
+        if c is None:
+            c = sqlite3.connect(str(self.path))
+            c.row_factory = sqlite3.Row
+            c.execute("PRAGMA journal_mode=WAL")
+            c.execute("PRAGMA foreign_keys=ON")
+            self._tls.conn = c
+        return c
 
     def _init_db(self):
         self.conn.executescript(SQLITE_SCHEMA)
@@ -229,9 +235,12 @@ class SQLiteStore:
         self.conn.commit()
 
     def close(self):
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        """Close the calling thread's connection. Other threads' connections
+        are left alone (they get cleaned up when those threads exit)."""
+        c = getattr(self._tls, "conn", None)
+        if c is not None:
+            c.close()
+            self._tls.conn = None
 
     def all_lessons(self) -> list[Lesson]:
         rows = self.conn.execute("SELECT * FROM lessons ORDER BY lesson_id").fetchall()
@@ -338,6 +347,7 @@ def merge_lesson(existing: Lesson, incoming: Lesson):
     Rules:
     - Only fill empty content fields (never overwrite existing data)
     - NEVER overwrite a successful transcript with empty/failed data
+    - Status fields from a fresh enrichment win over empty/pending status
     - Re-derive IDs after merge
     """
     for field_name in [
@@ -354,6 +364,20 @@ def merge_lesson(existing: Lesson, incoming: Lesson):
         if existing.transcript_status != "ok":
             existing.transcript = incoming.transcript
             existing.transcript_status = incoming.transcript_status
+    elif incoming.transcript_status in ("failed", "unavailable"):
+        # Record an enrichment attempt outcome, but only if existing isn't already ok.
+        if existing.transcript_status != "ok":
+            existing.transcript_status = incoming.transcript_status
+
+    # Scrape status: enrichment results (ok / failed) overwrite empty/pending.
+    if incoming.scrape_status in ("ok", "failed"):
+        existing.scrape_status = incoming.scrape_status
+
+    # Diagnostics: most-recent enrichment attempt wins.
+    if incoming.last_enriched:
+        existing.last_enriched = incoming.last_enriched
+    if incoming.error_message:
+        existing.error_message = incoming.error_message
 
     existing.ensure_ids()
 

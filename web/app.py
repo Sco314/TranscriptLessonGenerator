@@ -114,7 +114,8 @@ def _maybe_start_demo_seed() -> None:
             db_path = os.environ.get("TED_LESSONS_DB", str(DEFAULT_SQLITE_PATH))
             local_store = SQLiteStore(db_path)
             try:
-                summary = seed(local_store, enrich_new=True)
+                summary = seed(local_store, enrich_new=True,
+                               limit=3, pause_seconds=5.0)
                 log.info("Demo seed finished: %s", summary)
             finally:
                 local_store.close()
@@ -185,6 +186,17 @@ def _is_valid_url(url: str) -> bool:
 # Web Routes
 # ═══════════════════════════════════════════════════════════════════════════
 
+@app.route("/healthz")
+def healthz():
+    """Cheap health check. No template, no enrichment — just a row count."""
+    try:
+        n = len(get_store())
+        return jsonify({"status": "ok", "lessons": n})
+    except Exception as e:
+        log.exception("healthz failed")
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
 @app.route("/")
 def index():
     """Browse all lessons with optional search and collection filter."""
@@ -238,6 +250,23 @@ def lesson_detail(lesson_id: str):
         abort(404)
 
     return render_template("lesson.html", lesson=lesson)
+
+
+@app.route("/lesson/<lesson_id>/retry-enrichment", methods=["POST"])
+def retry_enrichment(lesson_id: str):
+    """Re-run scrape + transcript fetch for one lesson. Synchronous (~3-8s)."""
+    store = get_store()
+    lesson = store.find_by_id(lesson_id)
+    if not lesson:
+        abort(404)
+    try:
+        client = HttpClient()
+        enrich(lesson, client)
+        store.add_or_update(lesson)
+        store.save()
+    except Exception:
+        log.exception("Retry enrichment failed for %s", lesson_id)
+    return redirect(url_for("lesson_detail", lesson_id=lesson.lesson_id))
 
 
 @app.route("/lesson/<lesson_id>/document")

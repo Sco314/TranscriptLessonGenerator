@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -44,17 +45,21 @@ DEMO_LESSON_URLS: list[str] = [
 
 
 def seed(store: SQLiteStore, *, enrich_new: bool = True,
-         limit: int | None = None,
+         limit: int | None = 3,
+         pause_seconds: float = 5.0,
          http_client: HttpClient | None = None) -> dict:
     """Add the demo URLs to the store. Idempotent.
 
     Returns a summary dict: {added, skipped, enriched, failed}.
+
+    Defaults aimed at low-memory free-tier hosts: 3 lessons, 5s pause
+    between enrichments. Pass limit=None to use the full DEMO_LESSON_URLS list.
     """
     urls = DEMO_LESSON_URLS[:limit] if limit else DEMO_LESSON_URLS
     client = http_client or HttpClient()
     summary = {"added": 0, "skipped": 0, "enriched": 0, "failed": 0}
 
-    for url in urls:
+    for idx, url in enumerate(urls):
         try:
             candidate = Lesson.from_url(url)
         except ValueError as e:
@@ -81,9 +86,12 @@ def seed(store: SQLiteStore, *, enrich_new: bool = True,
                     "Enriched %s (scrape=%s, transcript=%s)",
                     lesson.lesson_id, lesson.scrape_status, lesson.transcript_status,
                 )
-            except Exception as e:
+            except Exception:
                 log.exception("Enrichment failed for %s", lesson.lesson_id)
                 summary["failed"] += 1
+
+            if pause_seconds > 0 and idx < len(urls) - 1:
+                time.sleep(pause_seconds)
 
     store.save()
     return summary
