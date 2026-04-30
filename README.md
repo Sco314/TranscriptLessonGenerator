@@ -66,11 +66,38 @@ save_document(doc, 'test.docx')
 |---|---|
 | `ted_lessons/` — scrape + store | Working |
 | `web/` — browse + submit | Working |
-| `lesson_builder/` — Python port of Node template | **New (this PR)** — passing smoke test, not yet wired into Flask |
-| `skills/` — content-type rules | **New (this PR)** — instrumentation + employability |
-| `.claude/design/` — Claude Design hooks | **New (this PR)** — brand + design system |
-| Flask `/activities` builder | Planned (next iteration) |
-| Lesson-page "Generate Worksheet" button | Planned (next iteration) |
+| `lesson_builder/` — Python port of Node template | Working — passing smoke test |
+| `skills/` — content-type rules | Working — instrumentation + employability |
+| `.claude/design/` — Claude Design hooks | Working — brand + design system |
+| Flask "Generate Activity Sheet" button | Working — general-employability via Anthropic API |
+| Instrumentation skill in Flask | Planned (next iteration) |
+
+## Activity sheet generation
+
+The lesson detail page has a **Generate Activity Sheet** button when a lesson
+has a usable transcript. The flow:
+
+1. Pick a lesson with `transcript_status = ok`.
+2. Fill the briefing form (format, framework, theme color, optional candidates,
+   connections, vocab, special notes).
+3. Submit. The server calls the Anthropic API with the
+   `general-employability` skill spec and returns a structured worksheet spec.
+4. The server renders the spec to a `.docx` via `lesson_builder/`.
+5. Download the `.docx` from the progress page.
+
+**Required env var:**
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+python web/app.py
+```
+
+Optional: `ANTHROPIC_MODEL` (defaults to `claude-sonnet-4-6`),
+`WORKSHEET_DOWNLOADS_DIR` (defaults to `web/static/downloads/`, gitignored).
+
+The JSON worksheet spec is the seam between the LLM and rendering — a future
+no-LLM mode can populate the same spec from a form. See
+`web/activity_generator.py` for the schema.
 
 ## Working with Claude Design
 

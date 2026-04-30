@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Generating Activity Sheet — {{ lesson.title or lesson.lesson_id }}{% endblock %}
+{% block content %}
+<div class="activity-progress-page">
+    <h1>Generating Activity Sheet</h1>
+    <p class="subtitle">{{ lesson.title or lesson.lesson_id }}</p>
+
+    <div class="enrichment-status" id="job-status" data-job-id="{{ job_id }}">
+        <p class="enrichment-label" id="job-label">Asking Claude to design the worksheet…</p>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width: 30%"></div></div>
+        <p class="enrichment-detail" id="job-detail">This usually takes 20-60 seconds.</p>
+    </div>
+
+    <div id="job-result" style="display:none">
+        <a id="download-link" href="#" class="btn btn-primary">Download .docx</a>
+        <a href="{{ url_for('lesson_detail', lesson_id=lesson.lesson_id) }}" class="btn btn-secondary">Back to Lesson</a>
+        <a href="{{ url_for('activity_sheet_form', lesson_id=lesson.lesson_id) }}" class="btn btn-secondary">Generate Another</a>
+    </div>
+
+    <div id="job-error" style="display:none" class="error-box"></div>
+</div>
+
+<script>
+(function() {
+    var jobId = {{ job_id|tojson }};
+    var statusUrl = {{ url_for('activity_sheet_status', job_id='')|tojson }} + jobId;
+    var downloadUrl = {{ url_for('activity_sheet_download', job_id='')|tojson }} + jobId;
+    var bar = document.getElementById('progress-fill');
+    var label = document.getElementById('job-label');
+    var detail = document.getElementById('job-detail');
+    var statusBox = document.getElementById('job-status');
+    var resultBox = document.getElementById('job-result');
+    var errorBox = document.getElementById('job-error');
+
+    function poll() {
+        fetch(statusUrl)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.state === 'done') {
+                    bar.style.width = '100%';
+                    label.textContent = 'Worksheet ready.';
+                    detail.textContent = 'Click Download to save the .docx.';
+                    statusBox.classList.add('enrichment-done');
+                    document.getElementById('download-link').href = downloadUrl;
+                    resultBox.style.display = '';
+                } else if (data.state === 'error') {
+                    bar.style.width = '100%';
+                    statusBox.style.display = 'none';
+                    errorBox.textContent = data.error || 'Generation failed.';
+                    errorBox.style.display = '';
+                } else {
+                    setTimeout(poll, 2000);
+                }
+            })
+            .catch(function() {
+                setTimeout(poll, 4000);
+            });
+    }
+
+    setTimeout(poll, 1500);
+})();
+</script>
+{% endblock %}

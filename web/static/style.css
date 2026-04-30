@@ -399,6 +399,83 @@ body {
     transition: width 0.3s ease;
 }
 
+/* ── Activity sheet generator ── */
+.btn-accent { background: #00695c; }
+.btn-accent:hover { background: #004d40; }
+.btn-disabled {
+    display: inline-block;
+    padding: 0.5rem 1.25rem;
+    background: #ccc;
+    color: #fff;
+    border-radius: var(--radius);
+    cursor: not-allowed;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+.lesson-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.activity-form-page, .activity-progress-page { max-width: 720px; }
+.activity-form { margin-top: 1rem; }
+.form-row { margin-bottom: 1.25rem; }
+.form-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+}
+.form-hint {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+.form-input, .form-select, .form-textarea {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.95rem;
+    font-family: inherit;
+}
+.form-textarea { resize: vertical; }
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+    border-color: #00695c;
+    outline: none;
+}
+.radio-group { display: flex; flex-direction: column; gap: 0.4rem; }
+.radio-group label { display: flex; gap: 0.5rem; align-items: baseline; cursor: pointer; }
+
+.theme-swatches {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.theme-swatch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    cursor: pointer;
+    padding: 0.4rem;
+    border-radius: var(--radius);
+    border: 2px solid transparent;
+    transition: border-color 0.15s;
+}
+.theme-swatch input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.theme-swatch:has(input:checked) {
+    border-color: var(--text);
+}
+.swatch {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.1);
+    display: block;
+}
+.swatch-label { font-size: 0.8rem; color: var(--text-muted); }
+.form-actions { display: flex; gap: 0.5rem; margin-top: 1.5rem; }
+
 @media print {
     .navbar, .footer, .btn, .pagination, .enrichment-status { display: none !important; }
     .lesson-doc { max-width: 100%; padding: 0; }

@@ -33,3 +33,6 @@ data/*.db-wal
 
 # Test artifacts
 tests/smoke_test.docx
+
+# Generated activity sheets
+web/static/downloads/

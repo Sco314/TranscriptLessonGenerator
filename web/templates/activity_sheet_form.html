@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Generate Activity Sheet — {{ lesson.title or lesson.lesson_id }}{% endblock %}
+{% block content %}
+<div class="activity-form-page">
+    <h1>Generate Activity Sheet</h1>
+    <p class="subtitle"><a href="{{ url_for('lesson_detail', lesson_id=lesson.lesson_id) }}">{{ lesson.title or lesson.lesson_id }}</a></p>
+
+    {% if error %}
+    <div class="error-box">{{ error }}</div>
+    {% endif %}
+
+    {% if not has_transcript %}
+    <div class="error-box">
+        This lesson has no usable transcript yet
+        (status: {{ lesson.transcript_status or 'pending' }}).
+        Activity-sheet generation needs a transcript.
+    </div>
+    {% else %}
+    <form method="post" action="{{ url_for('activity_sheet_form', lesson_id=lesson.lesson_id) }}" class="activity-form">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-row">
+            <label class="form-label">Format</label>
+            <div class="radio-group">
+                <label><input type="radio" name="format" value="follow_along" checked> Follow-Along <span class="form-hint">— instructional, fill-in then self-evaluation</span></label>
+                <label><input type="radio" name="format" value="interview_game"> Interview Game <span class="form-hint">— candidates compete, students evaluate</span></label>
+                <label><input type="radio" name="format" value="hybrid"> Hybrid <span class="form-hint">— let Claude decide</span></label>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label" for="framework">Framework</label>
+            <select name="framework" id="framework" class="form-select">
+                <option value="Auto" selected>Auto (Claude picks)</option>
+                <option value="STAR">STAR (Situation, Task, Action, Result)</option>
+                <option value="CARL">CARL (Context, Action, Result, Learned)</option>
+                <option value="4Ps">4Ps (Personal, Professional, Positive, Pithy)</option>
+                <option value="GROW">GROW (Goal, Reality, Options, Will)</option>
+                <option value="None">None (no acronym)</option>
+                <option value="Custom">Custom (describe in Special Notes)</option>
+            </select>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label">Theme color</label>
+            <div class="theme-swatches">
+                {% for key, t in themes.items() %}
+                <label class="theme-swatch">
+                    <input type="radio" name="theme" value="{{ key }}" {% if key == 'teal' %}checked{% endif %}>
+                    <span class="swatch" style="background: #{{ t.primary }}"></span>
+                    <span class="swatch-label">{{ t.name }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="form-row form-row-candidates" id="candidates-row" style="display:none">
+            <label class="form-label" for="candidates">Candidates</label>
+            <textarea name="candidates" id="candidates" rows="3" class="form-textarea"
+                placeholder="Trevor, Kimberly, Wayne (comma- or newline-separated; or 'see transcript')"></textarea>
+            <p class="form-hint">Only used for Interview Game format.</p>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label" for="connections">Connections to previous lessons (optional)</label>
+            <textarea name="connections" id="connections" rows="2" class="form-textarea"
+                placeholder="Students already completed Conflict Resolution 3 Steps activity"></textarea>
+        </div>
+
+        <div class="form-row">
+            <label class="form-label" for="vocab">Vocab to define (optional)</label>
+            <input type="text" name="vocab" id="vocab" class="form-input"
+                placeholder="pithy, contentious">
+        </div>
+
+        <div class="form-row">
+            <label class="form-label" for="notes">Special notes (optional)</label>
+            <textarea name="notes" id="notes" rows="3" class="form-textarea"
+                placeholder="Focus on common mistakes; include a bonus question on teamwork; etc."></textarea>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Generate Activity Sheet</button>
+            <a href="{{ url_for('lesson_detail', lesson_id=lesson.lesson_id) }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+
+    <script>
+    (function() {
+        var formatRadios = document.querySelectorAll('input[name="format"]');
+        var candidatesRow = document.getElementById('candidates-row');
+        function update() {
+            var v = document.querySelector('input[name="format"]:checked').value;
+            candidatesRow.style.display = (v === 'interview_game') ? '' : 'none';
+        }
+        formatRadios.forEach(function(r) { r.addEventListener('change', update); });
+        update();
+    })();
+    </script>
+    {% endif %}
+</div>
+{% endblock %}
