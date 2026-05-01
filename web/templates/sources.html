@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Source Library — Lesson Generator{% endblock %}
+{% block content %}
+<div class="browse-header">
+    <h1>Source Library</h1>
+    <p class="subtitle">{{ total }} source{{ 's' if total != 1 else '' }} on file</p>
+
+    <form class="search-form" method="get" action="{{ url_for('sources_index') }}">
+        <input type="text" name="q" value="{{ q }}" placeholder="Search sources..." class="search-input" autofocus>
+        <select name="source_type" class="collection-filter">
+            <option value="">Any type</option>
+            <option value="ted_ed"      {{ 'selected' if source_type == 'ted_ed' else '' }}>TED-Ed</option>
+            <option value="youtube"     {{ 'selected' if source_type == 'youtube' else '' }}>YouTube</option>
+            <option value="pasted_text" {{ 'selected' if source_type == 'pasted_text' else '' }}>Pasted text</option>
+            <option value="pdf"         {{ 'selected' if source_type == 'pdf' else '' }}>PDF</option>
+        </select>
+        <select name="collection" class="collection-filter">
+            <option value="">All Collections</option>
+            {% for c in collections %}
+            <option value="{{ c }}" {{ 'selected' if c == collection else '' }}>{{ c }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn">Search</button>
+        {% if q or collection or source_type %}
+        <a href="{{ url_for('sources_index') }}" class="btn btn-secondary">Clear</a>
+        {% endif %}
+    </form>
+</div>
+
+{% if q or collection or source_type %}
+<p class="results-count">
+    {{ total_results }} result{{ 's' if total_results != 1 else '' }}
+    {% if q %}for "{{ q }}"{% endif %}
+    {% if collection %}in "{{ collection }}"{% endif %}
+    {% if source_type %}of type "{{ source_type }}"{% endif %}
+</p>
+{% endif %}
+
+{% if sources %}
+<div class="lesson-grid">
+    {% for src in sources %}
+    <a href="{{ url_for('source_detail', source_id=src.id) }}" class="lesson-card">
+        {% if src.thumbnail_url %}
+        <img src="{{ src.thumbnail_url }}" alt="{{ src.title or src.id }}" class="card-thumb" loading="lazy">
+        {% else %}
+        <div class="card-thumb card-thumb-placeholder">{{ src.source_type or 'source' }}</div>
+        {% endif %}
+        <div class="card-body">
+            <h3 class="card-title">{{ src.title or '(untitled source)' }}</h3>
+            {% if src.author %}<p class="card-meta">{{ src.author }}</p>{% endif %}
+            {% if src.collection %}<span class="card-tag">{{ src.collection }}</span>{% endif %}
+            {% if src.duration %}<span class="card-duration">{{ src.duration }}</span>{% endif %}
+            <span class="card-tag" style="background:#eef;">{{ src.source_type }}</span>
+            <div class="card-status">
+                <span class="status-dot {{ 'status-ok' if src.scrape_status == 'ok' else 'status-pending' if not src.scrape_status else 'status-fail' }}" title="Scrape: {{ src.scrape_status or 'pending' }}"></span>
+                <span class="status-dot {{ 'status-ok' if src.transcript_status == 'ok' else 'status-pending' if not src.transcript_status else 'status-unavail' if src.transcript_status == 'unavailable' else 'status-fail' }}" title="Transcript: {{ src.transcript_status or 'pending' }}"></span>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<nav class="pagination">
+    {% if page > 1 %}
+    <a href="{{ url_for('sources_index', q=q, collection=collection, source_type=source_type, page=page-1) }}" class="btn btn-small">&laquo; Prev</a>
+    {% endif %}
+    <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="{{ url_for('sources_index', q=q, collection=collection, source_type=source_type, page=page+1) }}" class="btn btn-small">Next &raquo;</a>
+    {% endif %}
+</nav>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+    <p>No sources yet. <a href="{{ url_for('submit_form') }}">Submit a TED-Ed or YouTube URL</a>, or <a href="{{ url_for('import_csv') }}">import a CSV</a>.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ lesson.title or 'Generated Lesson' }}{% endblock %}
+{% block content %}
+<div class="lesson-detail">
+    <div class="lesson-header">
+        <h1>{{ lesson.title or '(untitled lesson)' }}</h1>
+        <p class="lesson-author">
+            {{ lesson.lesson_type }} · {{ lesson.generation_status }}
+            {% if source %}
+            · from <a href="{{ url_for('source_detail', source_id=source.id) }}">{{ source.title or source.id }}</a>
+            {% endif %}
+        </p>
+    </div>
+
+    {% if artifact_missing %}
+    <div class="error-box">
+        The DOCX artifact for this lesson is missing on disk (this can happen
+        after a Render redeploy). The lesson itself is safe in the database
+        and shown below. Click <strong>Regenerate DOCX</strong> to rebuild
+        the file from the saved spec.
+    </div>
+    <p>
+        <a href="{{ url_for('lesson_artifact_download', lesson_id=lesson.id, artifact_id=artifacts[0].id if artifacts else '') }}" class="btn btn-primary">Regenerate DOCX</a>
+    </p>
+    {% endif %}
+
+    {% if lesson.error_message %}
+    <div class="error-box">{{ lesson.error_message }}</div>
+    {% endif %}
+
+    {% if artifacts %}
+    <div class="lesson-section">
+        <h2>Downloads</h2>
+        <div class="lesson-actions">
+            {% for art in artifacts %}
+            <a href="{{ url_for('lesson_artifact_download', lesson_id=lesson.id, artifact_id=art.id) }}"
+               class="btn btn-accent">
+                Download .{{ art.artifact_type }}
+            </a>
+            {% endfor %}
+        </div>
+        <p class="form-hint">DOCX files live on temporary disk on Render free tier; if a download is missing, the app will regenerate it from the saved spec.</p>
+    </div>
+    {% endif %}
+
+    {% if lesson.lesson_html %}
+    <div class="lesson-section">
+        <h2>Preview</h2>
+        {{ lesson.lesson_html|safe }}
+    </div>
+    {% else %}
+    <div class="lesson-section">
+        <p class="text-muted">No preview available for this lesson.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

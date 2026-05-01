@@ -1,20 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Generating Activity Sheet — {{ lesson.title or lesson.lesson_id }}{% endblock %}
+{% block title %}Generating Activity Sheet — {{ source.title or source.id }}{% endblock %}
 {% block content %}
 <div class="activity-progress-page">
     <h1>Generating Activity Sheet</h1>
-    <p class="subtitle">{{ lesson.title or lesson.lesson_id }}</p>
+    <p class="subtitle">{{ source.title or source.id }}</p>
 
     <div class="enrichment-status" id="job-status" data-job-id="{{ job_id }}">
         <p class="enrichment-label" id="job-label">Asking Claude to design the worksheet…</p>
         <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width: 30%"></div></div>
-        <p class="enrichment-detail" id="job-detail">This usually takes 20-60 seconds.</p>
+        <p class="enrichment-detail" id="job-detail">This usually takes 20-60 seconds. Your saved lesson stays in the database even if you close this tab.</p>
     </div>
 
     <div id="job-result" style="display:none">
-        <a id="download-link" href="#" class="btn btn-primary">Download .docx</a>
-        <a href="{{ url_for('lesson_detail', lesson_id=lesson.lesson_id) }}" class="btn btn-secondary">Back to Lesson</a>
-        <a href="{{ url_for('activity_sheet_form', lesson_id=lesson.lesson_id) }}" class="btn btn-secondary">Generate Another</a>
+        <a id="open-link" href="#" class="btn btn-primary">Open Saved Lesson</a>
+        <a id="download-link" href="#" class="btn">Download .docx</a>
+        <a href="{{ url_for('source_detail', source_id=source.id) }}" class="btn btn-secondary">Back to Source</a>
+        <a href="{{ url_for('generate_from_source', source_id=source.id) }}" class="btn btn-secondary">Generate Another</a>
     </div>
 
     <div id="job-error" style="display:none" class="error-box"></div>
@@ -23,8 +24,9 @@
 <script>
 (function() {
     var jobId = {{ job_id|tojson }};
-    var statusUrl = {{ url_for('activity_sheet_status', job_id='')|tojson }} + jobId;
-    var downloadUrl = {{ url_for('activity_sheet_download', job_id='')|tojson }} + jobId;
+    var statusUrl = {{ url_for('generate_status', job_id='')|tojson }} + jobId;
+    var downloadUrlBase = {{ url_for('activity_sheet_download', job_id='')|tojson }};
+    var lessonViewBase = {{ (url_for('lesson_view', lesson_id='__ID__'))|tojson }};
     var bar = document.getElementById('progress-fill');
     var label = document.getElementById('job-label');
     var detail = document.getElementById('job-detail');
@@ -38,10 +40,14 @@
             .then(function(data) {
                 if (data.state === 'done') {
                     bar.style.width = '100%';
-                    label.textContent = 'Worksheet ready.';
-                    detail.textContent = 'Click Download to save the .docx.';
+                    label.textContent = 'Worksheet ready and saved.';
+                    detail.textContent = 'Saved to the Generated Lessons library.';
                     statusBox.classList.add('enrichment-done');
-                    document.getElementById('download-link').href = downloadUrl;
+                    document.getElementById('download-link').href = downloadUrlBase + jobId;
+                    if (data.lesson_id) {
+                        document.getElementById('open-link').href =
+                            lessonViewBase.replace('__ID__', data.lesson_id);
+                    }
                     resultBox.style.display = '';
                 } else if (data.state === 'error') {
                     bar.style.width = '100%';

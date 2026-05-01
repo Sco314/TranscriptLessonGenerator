@@ -33,23 +33,23 @@
             <span>{{ r.url }}: {{ r.error }}</span>
         </div>
         {% elif r.was_new %}
-        <div class="result-item result-new" id="result-{{ r.lesson.lesson_id }}">
+        <div class="result-item result-new" id="result-{{ r.source.id }}">
             <span class="result-badge badge-ok">NEW</span>
-            <a href="{{ url_for('lesson_detail', lesson_id=r.lesson.lesson_id) }}">
-                {{ r.lesson.title or r.lesson.lesson_id }}
+            <a href="{{ url_for('source_detail', source_id=r.source.id) }}">
+                {{ r.source.title or r.source.id }}
             </a>
-            <span class="result-status" id="status-{{ r.lesson.lesson_id }}">
+            <span class="result-status" id="status-{{ r.source.id }}">
                 {% if job_id %}enriching...{% else %}
-                scrape: {{ r.lesson.scrape_status or 'pending' }},
-                transcript: {{ r.lesson.transcript_status or 'pending' }}
+                scrape: {{ r.source.scrape_status or 'pending' }},
+                transcript: {{ r.source.transcript_status or 'pending' }}
                 {% endif %}
             </span>
         </div>
         {% else %}
         <div class="result-item result-exists">
             <span class="result-badge badge-pending">EXISTS</span>
-            <a href="{{ url_for('lesson_detail', lesson_id=r.lesson.lesson_id) }}">
-                {{ r.lesson.title or r.lesson.lesson_id }}
+            <a href="{{ url_for('source_detail', source_id=r.source.id) }}">
+                {{ r.source.title or r.source.id }}
             </a>
         </div>
         {% endif %}
@@ -57,7 +57,7 @@
     </div>
 
     <div class="results-actions">
-        <a href="{{ url_for('index') }}" class="btn">Browse All Lessons</a>
+        <a href="{{ url_for('sources_index') }}" class="btn">Browse Source Library</a>
         <a href="{{ url_for('submit_form') }}" class="btn btn-secondary">Submit More</a>
     </div>
 </div>

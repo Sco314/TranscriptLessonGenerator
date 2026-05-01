@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}{{ source.title or source.id }} — Source{% endblock %}
+{% block content %}
+<div class="lesson-detail">
+    <div class="lesson-header">
+        <h1>{{ source.title or '(untitled)' }}</h1>
+        {% if source.author %}<p class="lesson-author">by {{ source.author }}</p>{% endif %}
+    </div>
+
+    {% if source.youtube_id %}
+    <div class="video-container">
+        <iframe
+            src="https://www.youtube.com/embed/{{ source.youtube_id }}"
+            title="{{ source.title }}"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen></iframe>
+    </div>
+    {% endif %}
+
+    <div class="lesson-meta">
+        <div class="meta-grid">
+            <div class="meta-item">
+                <span class="meta-label">Type</span>
+                <span class="meta-value">{{ source.source_type }}</span>
+            </div>
+            {% if source.collection %}
+            <div class="meta-item">
+                <span class="meta-label">Collection</span>
+                <span class="meta-value"><a href="{{ url_for('sources_index', collection=source.collection) }}">{{ source.collection }}</a></span>
+            </div>
+            {% endif %}
+            {% if source.category %}
+            <div class="meta-item">
+                <span class="meta-label">Category</span>
+                <span class="meta-value">{{ source.category }}</span>
+            </div>
+            {% endif %}
+            {% if source.duration %}
+            <div class="meta-item">
+                <span class="meta-label">Duration</span>
+                <span class="meta-value">{{ source.duration }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="meta-links">
+            {% if source.ted_url %}
+            <a href="{{ source.ted_url }}" target="_blank" rel="noopener" class="btn btn-small">TED-Ed Page</a>
+            {% endif %}
+            {% if source.youtube_url %}
+            <a href="{{ source.youtube_url }}" target="_blank" rel="noopener" class="btn btn-small">YouTube</a>
+            {% endif %}
+        </div>
+
+        <div class="meta-status">
+            <span class="status-badge {{ 'badge-ok' if source.scrape_status == 'ok' else 'badge-fail' if source.scrape_status == 'failed' else 'badge-pending' }}">
+                Scrape: {{ source.scrape_status or 'pending' }}
+            </span>
+            <span class="status-badge {{ 'badge-ok' if source.transcript_status == 'ok' else 'badge-fail' if source.transcript_status == 'failed' else 'badge-unavail' if source.transcript_status == 'unavailable' else 'badge-pending' }}">
+                Transcript: {{ source.transcript_status or 'pending' }}
+            </span>
+            {% if source.last_enriched %}
+            <span class="meta-small">Last enriched: {{ source.last_enriched[:19] }}</span>
+            {% endif %}
+        </div>
+
+        {% if source.error_message %}
+        <div class="error-box">{{ source.error_message }}</div>
+        {% endif %}
+    </div>
+
+    {% if source.description %}
+    <div class="lesson-section">
+        <h2>Description</h2>
+        <p>{{ source.description }}</p>
+    </div>
+    {% endif %}
+
+    <div class="lesson-section">
+        <h2>{% if source.source_type == 'pdf' %}Extracted text{% elif source.source_type == 'pasted_text' %}Source text{% else %}Transcript{% endif %}</h2>
+        {% if source.body_text %}
+        <div class="transcript-box">{{ source.body_text }}</div>
+        {% elif source.transcript_status == 'unavailable' %}
+        <p class="text-muted">No transcript available.</p>
+        {% elif source.transcript_status == 'failed' %}
+        <p class="text-muted">Transcript fetch failed: {{ source.error_message or 'unknown error' }}.</p>
+        {% else %}
+        <p class="text-muted">Body text not yet fetched.</p>
+        {% endif %}
+    </div>
+
+    <div class="lesson-section">
+        <h2>Generate a lesson</h2>
+        <div class="lesson-actions">
+            {% if source.has_usable_body and pg_enabled() %}
+            <a href="{{ url_for('generate_from_source', source_id=source.id) }}" class="btn btn-accent">Generate Activity Sheet</a>
+            {% else %}
+            <span class="btn btn-disabled" title="A successful transcript or body text is required, and SUPABASE_DB_URL must be configured.">Generate Activity Sheet</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if generated %}
+    <div class="lesson-section">
+        <h2>Saved generated lessons</h2>
+        <table class="generated-list">
+            <thead>
+                <tr><th>Title</th><th>Type</th><th>Status</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for gl in generated %}
+                <tr>
+                    <td>{{ gl.title or '(untitled)' }}</td>
+                    <td>{{ gl.lesson_type }}</td>
+                    <td>{{ gl.generation_status }}</td>
+                    <td>{{ gl.created_at[:19] if gl.created_at else '' }}</td>
+                    <td><a href="{{ url_for('lesson_view', lesson_id=gl.id) }}" class="btn btn-small">Open</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

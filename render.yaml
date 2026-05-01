@@ -11,8 +11,17 @@ services:
         sync: false
       - key: FLASK_SECRET_KEY
         generateValue: true
+      # Supabase Postgres connection string. The lesson CMS stores
+      # source_content / generated_lesson / lesson_artifact rows here —
+      # this is the DURABLE source of truth, not the local SQLite file.
+      - key: SUPABASE_DB_URL
+        sync: false
+      # Legacy SQLite path (used only when SUPABASE_DB_URL is unset).
       - key: TED_LESSONS_DB
         value: /opt/render/project/src/data/lessons.db
+      # Local-disk DOCX cache. NON-DURABLE on Render free tier — files
+      # disappear on redeploy. The app re-renders missing DOCXs from
+      # generated_lesson.lesson_json on demand.
       - key: WORKSHEET_DOWNLOADS_DIR
         value: /opt/render/project/src/web/static/downloads
       - key: PYTHON_VERSION

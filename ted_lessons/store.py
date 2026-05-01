@@ -362,17 +362,29 @@ def merge_lesson(existing: Lesson, incoming: Lesson):
 # Factory: get the right store based on config
 # ═══════════════════════════════════════════════════════════════════════════
 
-def get_store(backend: str = "auto", path: str | Path | None = None) -> CSVStore | SQLiteStore:
+def get_store(backend: str = "auto", path: str | Path | None = None):
     """Get a store instance.
 
-    backend: "csv", "sqlite", or "auto" (sqlite if db exists or Phase 2, else csv)
+    backend:
+      "postgres" — Supabase Postgres (requires SUPABASE_DB_URL env var)
+      "sqlite"   — local SQLite (legacy / dev / tests)
+      "csv"      — file-backed CSV (legacy)
+      "auto"     — postgres if SUPABASE_DB_URL is set, else sqlite if db
+                   file exists, else csv
     """
+    if backend == "postgres":
+        from .postgres_store import PostgresStore
+        return PostgresStore(os.environ.get("SUPABASE_DB_URL"))
     if backend == "csv":
         return CSVStore(path or DEFAULT_CSV_PATH)
     if backend == "sqlite":
         return SQLiteStore(path or DEFAULT_SQLITE_PATH)
 
-    # Auto: prefer sqlite if the db file exists, else csv
+    # Auto: prefer Supabase if configured.
+    if os.environ.get("SUPABASE_DB_URL"):
+        from .postgres_store import PostgresStore
+        return PostgresStore(os.environ["SUPABASE_DB_URL"])
+
     sqlite_path = Path(path) if path and str(path).endswith(".db") else DEFAULT_SQLITE_PATH
     if sqlite_path.exists():
         return SQLiteStore(sqlite_path)

@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Generate Activity Sheet — {{ lesson.title or lesson.lesson_id }}{% endblock %}
+{% block title %}Generate Activity Sheet — {{ source.title or source.id }}{% endblock %}
 {% block content %}
 <div class="activity-form-page">
     <h1>Generate Activity Sheet</h1>
-    <p class="subtitle"><a href="{{ url_for('lesson_detail', lesson_id=lesson.lesson_id) }}">{{ lesson.title or lesson.lesson_id }}</a></p>
+    <p class="subtitle"><a href="{{ url_for('source_detail', source_id=source.id) }}">{{ source.title or source.id }}</a></p>
 
     {% if error %}
     <div class="error-box">{{ error }}</div>
@@ -11,12 +11,12 @@
 
     {% if not has_transcript %}
     <div class="error-box">
-        This lesson has no usable transcript yet
-        (status: {{ lesson.transcript_status or 'pending' }}).
-        Activity-sheet generation needs a transcript.
+        This source has no usable body text yet
+        (status: {{ source.transcript_status or 'pending' }}).
+        Activity-sheet generation needs a transcript or body text.
     </div>
     {% else %}
-    <form method="post" action="{{ url_for('activity_sheet_form', lesson_id=lesson.lesson_id) }}" class="activity-form">
+    <form method="post" action="{{ url_for('generate_from_source', source_id=source.id) }}" class="activity-form">
         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
 
         <div class="form-row">
@@ -81,7 +81,7 @@
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Generate Activity Sheet</button>
-            <a href="{{ url_for('lesson_detail', lesson_id=lesson.lesson_id) }}" class="btn btn-secondary">Cancel</a>
+            <a href="{{ url_for('source_detail', source_id=source.id) }}" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
 

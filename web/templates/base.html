@@ -8,10 +8,14 @@
 </head>
 <body>
     <nav class="navbar">
-        <a href="{{ url_for('index') }}" class="nav-brand">TED-Ed Lessons</a>
+        <a href="{{ url_for('sources_index') }}" class="nav-brand">Lesson Generator</a>
         <div class="nav-links">
-            <a href="{{ url_for('index') }}">Browse</a>
-            <a href="{{ url_for('submit_form') }}">Submit</a>
+            <a href="{{ url_for('sources_index') }}">Source Library</a>
+            {% if pg_enabled() %}
+            <a href="{{ url_for('lessons_index') }}">Generated Lessons</a>
+            {% endif %}
+            <a href="{{ url_for('submit_form') }}">Submit URL</a>
+            <a href="{{ url_for('import_csv') }}">Import CSV</a>
         </div>
     </nav>
 
