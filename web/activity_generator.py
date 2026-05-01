@@ -121,12 +121,28 @@ WORKSHEET_SCHEMA = {
 # Briefing
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _source_text(lesson) -> str:
+    """Pull out the body text from either a Lesson or a SourceContent."""
+    # Lesson has .transcript; SourceContent has .transcript_text plus
+    # .pdf_text / .raw_text. Try them in order.
+    for attr in ("transcript", "transcript_text", "pdf_text", "raw_text"):
+        v = getattr(lesson, attr, "")
+        if v:
+            return v
+    return ""
+
+
 def build_briefing(lesson, form_data: dict) -> dict:
-    """Assemble the briefing dict from a lesson + the submitted form fields."""
+    """Assemble the briefing dict from a lesson + the submitted form fields.
+
+    Accepts either a legacy Lesson or a SourceContent (duck-typed on
+    .title, .youtube_url, .ted_url, .author, .collection, .duration plus a
+    body-text attribute).
+    """
     return {
-        "VIDEO": lesson.title or lesson.lesson_id,
-        "URL": lesson.youtube_url or lesson.ted_url or "",
-        "TRANSCRIPT": lesson.transcript or "",
+        "VIDEO": lesson.title or getattr(lesson, "lesson_id", "") or getattr(lesson, "id", ""),
+        "URL": getattr(lesson, "youtube_url", "") or getattr(lesson, "ted_url", "") or "",
+        "TRANSCRIPT": _source_text(lesson),
         "FORMAT": form_data.get("format", "follow_along"),
         "FRAMEWORK": form_data.get("framework", "Auto"),
         "THEME_COLOR": form_data.get("theme", "teal"),
@@ -134,9 +150,9 @@ def build_briefing(lesson, form_data: dict) -> dict:
         "CONNECTIONS": form_data.get("connections", "").strip(),
         "VOCAB_TO_DEFINE": form_data.get("vocab", "").strip(),
         "SPECIAL_NOTES": form_data.get("notes", "").strip(),
-        "AUTHOR": lesson.author or "",
-        "COLLECTION": lesson.collection or "",
-        "DURATION": lesson.duration or "",
+        "AUTHOR": getattr(lesson, "author", "") or "",
+        "COLLECTION": getattr(lesson, "collection", "") or "",
+        "DURATION": getattr(lesson, "duration", "") or "",
     }
 
 
@@ -340,22 +356,120 @@ def render(spec: dict, output_path: str | Path) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Top-level
+# Top-level orchestration: source → Claude → save → DOCX → return record
 # ═══════════════════════════════════════════════════════════════════════════
 
-def generate(lesson, form_data: dict, output_path: str | Path) -> tuple[bool, str | None]:
-    """Briefing → Claude → render. Returns (ok, error_message)."""
-    if not lesson.transcript or lesson.transcript_status != "ok":
-        return False, "Lesson has no usable transcript."
+LESSON_TYPE = "general_employability_activity_sheet"
+
+
+def _has_usable_body(source) -> bool:
+    """Whether this source has enough text to feed the model."""
+    if hasattr(source, "has_usable_body"):
+        return bool(source.has_usable_body)
+    # Legacy Lesson: require a successful transcript.
+    return bool(getattr(source, "transcript", "")) and \
+        getattr(source, "transcript_status", "") == "ok"
+
+
+def generate(source, form_data: dict, output_dir: str | Path, store=None):
+    """Run the full activity-sheet generation pipeline.
+
+    Steps:
+      1. Insert/refresh a GeneratedLesson row with status='running'.
+      2. Build briefing → call Claude → validate spec.
+      3. Render HTML view of the spec (durable, in-DB).
+      4. Render DOCX to local disk (TEMPORARY artifact — see CLAUDE.md
+         durability boundary).
+      5. Persist lesson_json + lesson_html on the GeneratedLesson row,
+         status='done'. Persist a LessonArtifact pointing at the DOCX.
+
+    Returns: (generated_lesson, error_message). On failure
+    `generated_lesson.generation_status == 'failed'`. The caller can use
+    `generated_lesson.id` to look the row up later regardless.
+
+    `store` is the Postgres store. If None, the function still runs the
+    pipeline and returns an in-memory GeneratedLesson + DOCX, but no row
+    is persisted (useful for tests).
+    """
+    from ted_lessons.models import GeneratedLesson, LessonArtifact
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    source_id = getattr(source, "id", "") or getattr(source, "lesson_id", "")
+    title = getattr(source, "title", "") or "Activity Sheet"
+
+    gl = GeneratedLesson(
+        source_content_id=source_id,
+        lesson_type=LESSON_TYPE,
+        title=title,
+        generation_status="running",
+        briefing_json=dict(form_data) if form_data else {},
+    )
+    if store is not None:
+        store.save_generated_lesson(gl)
+
+    if not _has_usable_body(source):
+        gl.generation_status = "failed"
+        gl.error_message = "Source has no usable transcript or body text."
+        if store is not None:
+            store.save_generated_lesson(gl)
+        return gl, gl.error_message
 
     try:
-        briefing = build_briefing(lesson, form_data)
+        briefing = build_briefing(source, form_data)
         spec = call_claude(briefing)
+
+        # In-DB durable views.
+        from spec_to_html import render_html  # local import: web/ is on sys.path
+        html_view = render_html(spec)
+
+        # Local-disk artifact (NON-DURABLE on Render).
+        output_path = output_dir / f"{gl.id}.docx"
         ok = render(spec, output_path)
-        return ok, None if ok else "Failed to save document."
+        if not ok:
+            raise RuntimeError("Failed to save DOCX document.")
+
+        gl.lesson_json = spec
+        gl.lesson_html = html_view
+        gl.model_used = _MODEL
+        gl.generation_status = "done"
+        gl.error_message = ""
+        if store is not None:
+            store.save_generated_lesson(gl)
+
+            artifact = LessonArtifact(
+                generated_lesson_id=gl.id,
+                artifact_type="docx",
+                storage_backend="local",
+                file_path_or_url=str(output_path),
+                file_size_bytes=output_path.stat().st_size,
+            )
+            store.save_artifact(artifact)
+
+        return gl, None
+
     except jsonschema.ValidationError as e:
-        return False, f"Claude returned an invalid worksheet spec: {e.message}"
+        msg = f"Claude returned an invalid worksheet spec: {e.message}"
     except RuntimeError as e:
-        return False, str(e)
+        msg = str(e)
     except Exception as e:
-        return False, f"{type(e).__name__}: {e}"
+        msg = f"{type(e).__name__}: {e}"
+
+    gl.generation_status = "failed"
+    gl.error_message = msg
+    if store is not None:
+        store.save_generated_lesson(gl)
+    return gl, msg
+
+
+def regenerate_docx(generated_lesson, output_path: str | Path) -> bool:
+    """Re-render the DOCX for a saved GeneratedLesson from its lesson_json.
+
+    Used by the artifact-download endpoint to recover when a local DOCX
+    file has been wiped (e.g. after a Render redeploy). Cheap — just walks
+    the saved spec; no LLM call.
+    """
+    if not generated_lesson.lesson_json:
+        return False
+    return render(generated_lesson.lesson_json, output_path)

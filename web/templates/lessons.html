@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Generated Lessons{% endblock %}
+{% block content %}
+<div class="browse-header">
+    <h1>Generated Lessons</h1>
+    <p class="subtitle">{{ entries|length }} saved lesson{{ 's' if entries|length != 1 else '' }}</p>
+</div>
+
+{% if entries %}
+<table class="generated-list">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Source</th>
+            <th>Type</th>
+            <th>Created</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for gl, src in entries %}
+        <tr>
+            <td>{{ gl.title or '(untitled)' }}</td>
+            <td>
+                {% if src %}
+                <a href="{{ url_for('source_detail', source_id=src.id) }}">{{ src.title or src.id }}</a>
+                {% else %}
+                <span class="text-muted">(unknown source)</span>
+                {% endif %}
+            </td>
+            <td>{{ gl.lesson_type }}</td>
+            <td>{{ gl.created_at[:19] if gl.created_at else '' }}</td>
+            <td>
+                <span class="status-badge {{ 'badge-ok' if gl.generation_status == 'done' else 'badge-fail' if gl.generation_status == 'failed' else 'badge-pending' }}">{{ gl.generation_status }}</span>
+            </td>
+            <td>
+                <a href="{{ url_for('lesson_view', lesson_id=gl.id) }}" class="btn btn-small">Open</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <p>No generated lessons yet. Open a source and click <em>Generate Activity Sheet</em>.</p>
+</div>
+{% endif %}
+{% endblock %}
